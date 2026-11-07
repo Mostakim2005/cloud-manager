@@ -1,0 +1,30 @@
+# Node & Svelte
+node_modules/
+.svelte-kit/
+build/
+dist/
+.env
+.env.*
+!.env.example
+
+# Tauri & Rust
+src-tauri/target/
+Cargo.lock
+
+# Operating System & IDE
+.DS_Store
+Thumbs.db
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.idea/
+.vscode/
+*.local
+
+# Local SQLite databases & test logs
+*.sqlite-wal
+*.sqlite-shm
+*.log
+staging/

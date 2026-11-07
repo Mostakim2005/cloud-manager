@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cloud Manager - Project Visual Guide & Architecture Dashboard</title>
+  <!-- Mermaid module for rendering diagrams -->
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({ startOnLoad: true, theme: 'dark' });
+  </script>
+  <style>
+    :root {
+      --bg: #0b0f19;
+      --surface: #151c2c;
+      --card: #1c253b;
+      --border: #2a3652;
+      --text: #f1f5f9;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+      --success: #22c55e;
+      --warn: #f59e0b;
+      --danger: #ef4444;
+      --youtube: #ff0033;
+      --purple: #a855f7;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      padding: 24px;
+      max-width: 1280px;
+      margin: 0 auto;
+    }
+    header {
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 20px;
+      margin-bottom: 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .brand-title { font-size: 1.8rem; font-weight: 800; color: var(--accent); }
+    .brand-sub { color: var(--muted); font-size: 0.95rem; margin-top: 4px; }
+    .version-tag { font-size: 0.8rem; background: #0369a1; padding: 4px 10px; border-radius: 99px; color: #fff; font-weight: 600; }
+    
+    .tabs {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+    }
+    .tab-btn {
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+      padding: 10px 18px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 0.9rem;
+      transition: all 0.2s ease;
+    }
+    .tab-btn:hover { background: var(--card); border-color: var(--accent); }
+    .tab-btn.active {
+      background: var(--accent);
+      color: #0b0f19;
+      border-color: var(--accent);
+    }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+    
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 22px;
+      margin-bottom: 20px;
+    }
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .card-title { font-size: 1.2rem; font-weight: 700; color: #fff; }
+    .badge {
+      font-size: 0.75rem;
+      padding: 3px 10px;
+      border-radius: 999px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .badge-human { background: rgba(56, 189, 248, 0.2); color: var(--accent); border: 1px solid rgba(56, 189, 248, 0.4); }
+    .badge-agent { background: rgba(34, 197, 94, 0.2); color: var(--success); border: 1px solid rgba(34, 197, 94, 0.4); }
+    .badge-trap { background: rgba(239, 68, 68, 0.2); color: var(--danger); border: 1px solid rgba(239, 68, 68, 0.4); }
+    .badge-feature { background: rgba(168, 85, 247, 0.2); color: var(--purple); border: 1px solid rgba(168, 85, 247, 0.4); }
+    
+    .summary {
+      color: var(--accent);
+      font-weight: 500;
+      margin-bottom: 14px;
+      padding-left: 12px;
+      border-left: 3px solid var(--accent);
+      font-size: 0.95rem;
+    }
+    .anchor {
+      font-family: monospace;
+      font-size: 0.85rem;
+      background: #080c14;
+      padding: 8px 12px;
+      border-radius: 6px;
+      border: 1px solid #1a2234;
+      margin-top: 12px;
+      color: #7dd3fc;
+    }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 12px; }
+    .mini-box { background: var(--card); border: 1px solid var(--border); padding: 14px; border-radius: 8px; font-size: 0.88rem; }
+    .diagram-box { background: #070a12; border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin: 14px 0; overflow-x: auto; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div>
+      <div class="brand-title">Cloud Manager Visual Guide</div>
+      <div class="brand-sub">Universal Multi-Cloud Aggregator, Smart Delta Routing, ADB Phone Importer & App Sync Backplane</div>
+    </div>
+    <div>
+      <span class="version-tag">PolyForm NC 1.0.0</span>
+    </div>
+  </header>
+
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab(0)">🗺️ System Architecture</button>
+    <button class="tab-btn" onclick="switchTab(1)">⚡ Feature Matrix</button>
+    <button class="tab-btn" onclick="switchTab(2)">⚖️ Architectural Decisions</button>
+    <button class="tab-btn" onclick="switchTab(3)">⚠️ Engineering Traps</button>
+    <button class="tab-btn" onclick="switchTab(4)">📱 ADB & YouTube Pipelines</button>
+  </div>
+
+  <!-- TAB 0: ARCHITECTURE -->
+  <div class="tab-panel active">
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">High-Level Visual Architecture</span>
+        <span class="badge badge-human">Core Topology</span>
+      </div>
+      <div class="summary">Hybrid assembly uniting Rclone transport, YouTube API v3, ADB phone importer, and Tauri v2 desktop UI.</div>
+      <div class="diagram-box">
+        <pre class="mermaid">
+flowchart TB
+    subgraph Frontend["Desktop GUI (Tauri v2 + Svelte 5)"]
+        EXP["Virtual File Explorer (60 FPS Lazy Load)"]
+        ROUT_UI["Smart Routing Matrix"]
+        PHONE_UI["ADB Media Ingestion Center"]
+        YT_UI["YouTube Pipeline Monitor"]
+    end
+
+    subgraph Core["Local Host Daemon (Rust Core)"]
+        IPC["Tauri IPC Router"]
+        SQL[("SQLite WAL Database\n(Metadata, Virtual Tree, FTS5)")]
+        ENGINE["Smart Rule Dispatcher\n(Extension, Origin, Size)"]
+        BACKPLANE["Localhost REST Backplane\n(:59432 HTTP / WebDAV)"]
+    end
+
+    subgraph Adapters["Subsystem Adapters"]
+        ADB_W["ADB Process Worker (MediaStore Scan)"]
+        YT_W["YouTube API v3 (Resumable Uploader)"]
+        RCLONE_W["Rclone Daemon (Mega Crypto & GDrive)"]
+    end
+
+    subgraph Targets["Storage Destinations"]
+        PHONE["📱 Android Device (DCIM/Camera)"]
+        EXE_APPS["💻 Custom .EXE & Note Apps"]
+        YT_TARGET["▶️ YouTube Account (Private Playlist)"]
+        GD_POOL["Google Drive Remotes (15GB/100GB)"]
+        MEGA_POOL["Mega.nz Remotes (20GB Pools)"]
+    end
+
+    Frontend <-->|Tauri IPC| IPC
+    IPC <--> SQL
+    IPC --> ENGINE
+    BACKPLANE <-->|Sync State| SQL
+    EXE_APPS <-->|HTTP POST :59432| BACKPLANE
+
+    ENGINE -->|Phone Media| ADB_W
+    ENGINE -->|Videos| YT_W
+    ENGINE -->|General Cloud| RCLONE_W
+
+    ADB_W <-->|USB / WiFi Bridge| PHONE
+    YT_W -->|OAuth2 Resumable| YT_TARGET
+    RCLONE_W <-->|Google REST API| GD_POOL
+    RCLONE_W <-->|Node Crypto & VFS| MEGA_POOL
+        </pre>
+      </div>
+      <div class="anchor">Code Anchor: `src-tauri/src/main.rs` -> `tauri::Builder::default`</div>
+    </div>
+  </div>
+
+  <!-- TAB 1: FEATURES -->
+  <div class="tab-panel">
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">[FEATURE: Multi-Cloud-Storage-Pooling]</span>
+        <span class="badge badge-feature">Core Feature</span>
+      </div>
+      <div class="summary">Combines multiple Google Drive and Mega.nz accounts into a unified virtual storage pool.</div>
+      <p style="color:var(--muted); font-size:0.9rem;">Aggregates disparate free and paid quotas into one virtual drive view. Tracks live gigabyte usage across all connected accounts in real-time.</p>
+      <div class="anchor">Anchor: `src-tauri/src/rclone/account_manager.rs` -> `AccountManager::list_connected_remotes`</div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">[FEATURE: ADB-Phone-Photo-Delta-Sync]</span>
+        <span class="badge badge-feature">Mobile Import</span>
+      </div>
+      <div class="summary">Compares phone MediaStore records with local SQLite to pull ONLY newly captured photos and videos.</div>
+      <p style="color:var(--muted); font-size:0.9rem;">Eliminates redundant multi-gigabyte copying over USB/WiFi. Automatically creates `YYYY/MM/` date folders and checks SHA-256 hashes.</p>
+      <div class="anchor">Anchor: `src-tauri/src/adb/client.rs` -> `AdbDeviceManager::query_mediastore`</div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">[FEATURE: YouTube-Private-Video-Pipeline]</span>
+        <span class="badge badge-feature">Video Pipeline</span>
+      </div>
+      <div class="summary">Automatically uploads screen recordings to YouTube as private videos assigned to specific playlists.</div>
+      <p style="color:var(--muted); font-size:0.9rem;">Saves precious cloud drive quotas. Uses HTTP resumable uploads with chunked transfer and enforces private visibility.</p>
+      <div class="anchor">Anchor: `src-tauri/src/youtube/uploader.rs` -> `YouTubeUploader::upload_resumable_video`</div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">[FEATURE: Localhost-App-Backplane-API]</span>
+        <span class="badge badge-feature">Inter-App Sync</span>
+      </div>
+      <div class="summary">Local HTTP API on port 59432 enabling custom Windows .EXE and note apps to sync state effortlessly.</div>
+      <p style="color:var(--muted); font-size:0.9rem;">Eliminates the need to bundle heavy cloud SDKs into every custom application you develop.</p>
+      <div class="anchor">Anchor: `src-tauri/src/backplane/server.rs` -> `start_local_backplane`</div>
+    </div>
+  </div>
+
+  <!-- TAB 2: DECISIONS -->
+  <div class="tab-panel">
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">[DECISION: Hybrid-Rclone-Modular-Assembly]</span>
+        <span class="badge badge-human">Decided By Human</span>
+      </div>
+      <div class="summary">Chose Rclone daemon for multi-cloud transport rather than writing custom Mega/GDrive crypto engines from scratch.</div>
+      <div class="diagram-box">
+        <pre class="mermaid">
+flowchart LR
+    subgraph Failed["❌ Option A: Monolithic Client From Scratch"]
+        A1[Custom Mega Protocol Code] --> A2[Node Crypto Desyncs & API Breakages]
+    end
+    subgraph Active["✅ Option B: Hybrid Modular Assembly (Active)"]
+        B1[Rclone Daemon] --> B2[Handles Mega & GDrive Crypto Reliably]
+        B3[Dedicated Modules] --> B4[Clean YouTube, ADB & Custom .EXE APIs]
+    end
+        </pre>
+      </div>
+      <div class="anchor">Anchor: `src-tauri/src/rclone/supervisor.rs` -> `RcloneDaemonSupervisor::start`</div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">[DECISION: ADB-MediaStore-Metadata-Pre-Filter]</span>
+        <span class="badge badge-human">Decided By Human</span>
+      </div>
+      <div class="summary">Pre-filters phone media via Android MediaStore queries instead of copying all files to PC first.</div>
+      <div class="diagram-box">
+        <pre class="mermaid">
+flowchart LR
+    subgraph Failed["❌ Option A: Pull Everything Then Filter"]
+        A1[Pull 50GB over ADB] --> A2[Compute Hashes Locally] --> A3[Discard 95% of duplicates (Very Slow)]
+    end
+    subgraph Active["✅ Option B: Phone-Side Metadata Query"]
+        B1[Query Phone MediaStore in 100ms] --> B2[Compare with SQLite Catalog] --> B3[Pull ONLY New Files (Blazing Fast)]
+    end
+        </pre>
+      </div>
+      <div class="anchor">Anchor: `src-tauri/src/adb/client.rs` -> `AdbDeviceManager::query_mediastore`</div>
+    </div>
+  </div>
+
+  <!-- TAB 3: TRAPS -->
+  <div class="tab-panel">
+    <div class="card" style="border-left: 4px solid var(--danger);">
+      <div class="card-header">
+        <span class="card-title">[TRAP: Mega-Concurrent-Node-Session-Limits]</span>
+        <span class="badge badge-trap">Critical Trap</span>
+      </div>
+      <div class="summary">NEVER bypass Rclone's connection pool to issue concurrent raw HTTP uploads to Mega.</div>
+      <p style="color:var(--muted); font-size:0.9rem;">Mega limits concurrent node tree updates. Uncoordinated parallel writes cause node sequence divergence and session invalidation.</p>
+      <div class="anchor">Anchor: `src-tauri/src/rclone/supervisor.rs` -> `RcloneDaemonSupervisor::get_upload_queue`</div>
+    </div>
+
+    <div class="card" style="border-left: 4px solid var(--danger);">
+      <div class="card-header">
+        <span class="card-title">[TRAP: ADB-Windows-CRLF-Double-Newline]</span>
+        <span class="badge badge-trap">Critical Trap</span>
+      </div>
+      <div class="summary">NEVER parse raw string output from ADB shell on Windows without stripping \r\r\n.</div>
+      <p style="color:var(--muted); font-size:0.9rem;">Windows console runtime adds extra carriage returns to Android shell outputs, causing integer byte parsing crashes.</p>
+      <div class="anchor">Anchor: `src-tauri/src/adb/client.rs` -> `sanitize_adb_output`</div>
+    </div>
+
+    <div class="card" style="border-left: 4px solid var(--danger);">
+      <div class="card-header">
+        <span class="card-title">[TRAP: YouTube-Daily-Quota-Burn]</span>
+        <span class="badge badge-trap">Critical Trap</span>
+      </div>
+      <div class="summary">NEVER poll the YouTube Data API to check video processing status in a fast loop.</div>
+      <p style="color:var(--muted); font-size:0.9rem;">YouTube gives 10,000 units/day. Video upload costs 1,600 units. Looping status polls drains the daily quota in seconds.</p>
+      <div class="anchor">Anchor: `src-tauri/src/youtube/uploader.rs` -> `handle_resumable_completion`</div>
+    </div>
+  </div>
+
+  <!-- TAB 4: WORKFLOWS -->
+  <div class="tab-panel">
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">ADB Phone Delta Import Sequence</span>
+        <span class="badge badge-feature">Data Flow</span>
+      </div>
+      <div class="diagram-box">
+        <pre class="mermaid">
+sequenceDiagram
+    participant UI as Desktop UI
+    participant ADB as ADB Subsystem
+    participant Phone as Android Device
+    participant DB as SQLite Catalog
+    participant Mega as Mega Photo Pool
+
+    UI->>ADB: Scan Device Media
+    ADB->>Phone: adb shell content query (MediaStore)
+    Phone-->>ADB: Returns metadata (name, size, timestamp)
+    ADB->>DB: Compare against synced catalog
+    DB-->>ADB: Delta result (e.g. 18 new files)
+    ADB->>UI: Show Delta: "18 Unsynced Photos (64 MB)"
+    UI->>ADB: Click "Import Unsynced"
+    ADB->>Phone: adb pull new files
+    Phone-->>ADB: Stream file bytes
+    ADB->>DB: Compute SHA256 & register photo records
+    ADB->>Mega: Dispatch to Mega Photo Pool
+        </pre>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">YouTube Private Resumable Upload Sequence</span>
+        <span class="badge badge-feature">Data Flow</span>
+      </div>
+      <div class="diagram-box">
+        <pre class="mermaid">
+sequenceDiagram
+    participant UI as Desktop UI
+    participant YT as YouTube Subsystem
+    participant API as YouTube Data API v3
+    participant DB as SQLite Catalog
+
+    UI->>YT: Queue Video (demo.mp4)
+    YT->>API: POST /upload/youtube/v3 (status.privacyStatus = "private")
+    API-->>YT: 200 OK + Location URI
+    loop 16MB Resumable Chunks
+        YT->>API: PUT chunk byte range
+        API-->>YT: 308 Resume Incomplete
+        YT->>UI: Update live upload meter (MB/s + %)
+    end
+    API-->>YT: 200 OK + Video ID
+    YT->>API: POST /playlistItems (Add to Target Playlist)
+    YT->>DB: Save Video ID & YouTube Link
+    YT->>UI: Upload Completed
+        </pre>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function switchTab(idx) {
+      const btns = document.querySelectorAll('.tab-btn');
+      const panels = document.querySelectorAll('.tab-panel');
+      btns.forEach((b, i) => b.classList.toggle('active', i === idx));
+      panels.forEach((p, i) => p.classList.toggle('active', i === idx));
+    }
+  </script>
+</body>
+</html>
