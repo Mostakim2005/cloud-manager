@@ -1,82 +1,79 @@
 # Product Intent & Feature Map (`PRODUCT.md`)
-> **1-Line Summary:** The permanent source of truth for user intentions, active feature capabilities, and future roadmap for the Cloud Manager desktop system.
+> **1-Line Summary:** The permanent source of truth for user intentions, `[PLANNED]` feature specs, non-goals, and roadmap for the Cloud Manager desktop system.
 
 ## 1. Core Vision & User Experience Intent
-* **What This App Does (Plain English):** Cloud Manager aggregates multiple personal Google Drive accounts and Mega.nz accounts into a unified, high-speed virtual filesystem. It intelligently routes files to specific cloud targets based on origin directory, file extension, or size, automatically manages phone-to-PC photo sync via Android Debug Bridge (ADB), automates private video uploads to YouTube playlists, and provides a local background sync API for custom Windows `.exe` desktop apps.
-* **How It Must Feel to Use:** Responsive, instantaneous, and zero-freeze. The UI loads thousands of virtual files in under 5 milliseconds from a local SQLite cache without waiting for slow cloud network requests. Live transfer meters provide real-time feedback on upload speeds and remaining bytes.
+* **Blueprint Status:** Pre-implementation blueprint (`[PLANNED]` — zero application source code exists yet; final stack lock pending user confirmation).
+* **AI-Friendly Language & Reuse Policy:** All custom-written code is restricted to **TypeScript/JavaScript, Go, or Python** so AI agents can reliably build, test, and maintain the codebase. Reused battle-tested open-source binaries and libraries (such as Rclone, LocalSend Android app, Syncthing, ADB, and SQLite) may be implemented in any language.
+* **What This App Does (Plain English):** Cloud Manager aggregates multiple Google Drive and Mega.nz accounts into a unified virtual storage pool, deterministically routes incoming files by origin/extension/size, syncs new phone photos and videos over **both Same-Router Wi-Fi LAN P2P and USB/Wi-Fi ADB**, archives designated videos as private YouTube playlists, and exposes an authenticated `127.0.0.1:59432` backplane for custom Windows `.exe` and note-taking apps.
+* **How It Must Feel to Use:** Responsive, instantaneous, and zero-freeze. Local catalog browsing and FTS5 search resolve in under 5 ms from SQLite WAL without blocking on cloud APIs, paired with live throttled (`<= 5 Hz`) transfer progress and full Light/Dark/System UI parity.
 
 ---
 
-## 2. Active Features (Do Not Break)
+## 2. Planned Core Features (Blueprint — `[PLANNED]`)
 
 ### [FEATURE: Multi-Cloud-Storage-Pooling] | Aliases: account manager, drive pooling, quota aggregation, mega gdrive merge
-> **1-Line Summary:** Combines multiple independent Google Drive and Mega.nz accounts into a cohesive virtual storage pool displayed in a single unified view.
-* **User Intention (Non-Negotiable):** The user has multiple free and paid cloud accounts across Google and Mega. The app must allow logging into all of them simultaneously, visualize individual and aggregated quota meters, and present files as if they exist on a single local drive.
-* **Visual / UI Behavior:** The left navigation sidebar displays each connected account with a colored progress bar showing used vs. total gigabytes (e.g., `GDrive #1: 10.2/15 GB`, `Mega #1: 18.4/20 GB`, `Pool Total: 175 GB`).
-* **Code Anchors (Grep Targets):**
-  * `src-tauri/src/rclone/account_manager.rs` -> `AccountManager`, `list_connected_remotes`
-  * `src/lib/components/StorageMeter.svelte` -> `storagePoolTotal`, `accountQuotas`
+> **1-Line Summary:** Combines multiple independent Google Drive and Mega.nz accounts into a cohesive virtual storage pool via Rclone `union` and `hasher`.
+* **User Intention (Non-Negotiable):** Connect multiple free and paid Google Drive and Mega accounts simultaneously, visualize per-account and aggregated free/used quotas, and browse/manage files in one unified catalog.
+* **Design Guardrails:** Uses Rclone `union` (`epmfs`/`mfs`) plus Rclone `hasher` overlays (`>= v1.66`) on Mega remotes so Mega's lack of native `ModTime` and standard remote hashes does not trigger re-upload loops.
+* **Status:** `[PLANNED]` — code anchors will be added once scaffolding is created.
 
 ---
 
 ### [FEATURE: Smart-Routing-Rule-Engine] | Aliases: automated routing, file sorting, origin rules, extension dispatch
-> **1-Line Summary:** Dynamically dispatches incoming and modified files to designated cloud accounts based on user-defined matching criteria.
-* **User Intention (Non-Negotiable):** Avoid manual drag-and-drop sorting. Files must automatically flow to their intended storage tier (e.g., PDFs to Google Drive #2, large raw media to Mega pools, note data to Google Drive #1) based on origin directory, extension patterns, or file size thresholds.
-* **Visual / UI Behavior:** Dedicated "Smart Routing" panel allowing the user to create, toggle, and prioritize rules with match chips (e.g., `*.pdf` $\to$ GDrive Books; `> 100MB` $\to$ Mega Pool).
-* **Code Anchors (Grep Targets):**
-  * `src-tauri/src/rules/engine.rs` -> `RuleMatcher`, `evaluate_target_account`
-  * `src/lib/components/RuleEditorModal.svelte` -> `saveRuleConfig`, `activeRulesList`
+> **1-Line Summary:** Deterministically dispatches incoming files to designated cloud targets using priority-ordered rules and atomic in-flight quota reservation.
+* **User Intention (Non-Negotiable):** Automatically route files (e.g., PDFs to Google Drive, raw media to Mega pools, recordings to YouTube) by origin directory, extension, or size without manual sorting.
+* **Design Guardrails:** Evaluates rules strictly by `priority ASC` (`first-match-wins`, explicit `stop_on_match`) with a mandatory catch-all fallback rule, backed by an in-memory `QuotaReservationTracker` (`free - inflight - 500 MiB safety floor`) and automatic pool spillover.
+* **Status:** `[PLANNED]` — code anchors will be added once scaffolding is created.
 
 ---
 
-### [FEATURE: ADB-Phone-Photo-Delta-Sync] | Aliases: phone sync, adb transfer, photo importer, dcim pull
-> **1-Line Summary:** Connects to an Android phone over ADB, compares photo/video metadata against the local database, and pulls only newly captured files.
-* **User Intention (Non-Negotiable):** The user connects their phone periodically via USB/WiFi ADB. The app must instantly identify which photos and videos on the phone have already been copied to PC and which are new, avoiding redundant multi-gigabyte copying.
-* **Visual / UI Behavior:** Dedicated "Phone Ingestion Stream" view displaying connected device serial, total phone media count, count of already-synced items, and a one-click button: `Import Unsynced Photos (N items, X MB)`.
-* **Code Anchors (Grep Targets):**
-  * `src-tauri/src/adb/client.rs` -> `AdbDeviceManager`, `fetch_phone_mediastore`
-  * `src-tauri/src/adb/sync_worker.rs` -> `pull_delta_photos`, `verify_imported_hash`
-  * `src/lib/components/PhoneSyncModal.svelte` -> `deviceConnectionState`, `executeAdbPull`
+### [FEATURE: Phone-Media-Delta-Sync-WiFi-And-ADB] | Aliases: phone sync, wifi transfer, lan p2p, adb transfer, photo importer, dcim pull
+> **1-Line Summary:** Pulls only newly captured phone photos, videos, and arbitrary files via Same-Router Wi-Fi LAN P2P or USB/Wi-Fi ADB into one SHA-256 deduplicated pipeline.
+* **User Intention (Non-Negotiable):** Transfer only new media from Android to PC over home Wi-Fi (without requiring a USB cable) **and** support USB/Wi-Fi ADB bulk recovery, avoiding duplicate multi-gigabyte copies.
+* **Design Guardrails:**
+  * **Wi-Fi LAN P2P (Opt-In, OFF by default):** Isolated port (`53317`) supporting LocalSend v2 over HTTPS/TLS with cert fingerprint pinning + 6-digit PIN/accept prompt, plus optional Syncthing in LAN-only mode (Global Discovery/Relays disabled).
+  * **ADB Fallback / Bulk Mode:** Queries `images/media` and `video/media` (`_id,relative_path,_display_name,_size,date_modified,datetaken`), normalizes timestamps to UTC seconds, and trims Windows `\r\r\n`.
+  * **Canonical Ingestion:** Both paths feed one streaming SHA-256 deduplication and `/Photos/YYYY/MM/` filing pipeline.
+* **Status:** `[PLANNED]` — code anchors will be added once scaffolding is created.
 
 ---
 
 ### [FEATURE: YouTube-Private-Video-Pipeline] | Aliases: youtube uploader, private video sync, playlist automation
-> **1-Line Summary:** Automatically uploads designated video files to a linked YouTube channel as private videos assigned to pre-configured playlists.
-* **User Intention (Non-Negotiable):** Eliminate manual browser uploads for screen recordings and archives. When a video is placed into a designated folder or marked in the UI, it uploads via the YouTube Data API v3 with privacy forced to `private` and is placed into a user-selected playlist.
-* **Visual / UI Behavior:** A specialized pipeline card showing YouTube OAuth status, selected default playlist, privacy badge (`🔒 Private (Enforced)`), and live resumable upload progress bar with upload speed (MB/s).
-* **Code Anchors (Grep Targets):**
-  * `src-tauri/src/youtube/uploader.rs` -> `YouTubeUploader`, `upload_resumable_video`
-  * `src/lib/components/YouTubePipelineCard.svelte` -> `playlistSelector`, `uploadProgressBar`
+> **1-Line Summary:** Uploads designated videos to YouTube as enforced `private` videos assigned to pre-configured playlists via resumable HTTP chunks.
+* **User Intention (Non-Negotiable):** Archive screen recordings and large videos to private YouTube playlists instead of exhausting cloud drive quotas.
+* **Design Guardrails:** Enforces `status.privacyStatus = "private"`, persists resumable `Location` session URIs across restarts, tracks daily quota units in a persistent `youtube_quota_ledger` (America/Los_Angeles reset, hard cap `9,600 / 10,000` units), and documents `In Production` OAuth consent to prevent 7-day token expiry.
+* **Status:** `[PLANNED]` — code anchors will be added once scaffolding is created.
 
 ---
 
 ### [FEATURE: Localhost-App-Backplane-API] | Aliases: exe sync, custom app api, localhost backplane, cross-app state
-> **1-Line Summary:** Exposes a lightweight local HTTP REST endpoint on port `59432` allowing custom desktop `.exe` and note-taking apps to sync state effortlessly.
-* **User Intention (Non-Negotiable):** Custom Windows desktop applications and note-taking tools need cross-device data persistence without bundling complex Google or Mega cloud SDKs into every binary. They simply ping `localhost:59432` to push or pull changes.
-* **Visual / UI Behavior:** "Local Backplane" status card displaying the listener status (`127.0.0.1:59432 LISTENING`), active connected clients, and real-time request log.
-* **Code Anchors (Grep Targets):**
-  * `src-tauri/src/backplane/server.rs` -> `start_local_backplane`, `handle_app_sync`
-  * `src/lib/components/BackplaneStatus.svelte` -> `activeClientList`, `recentSyncEvents`
+> **1-Line Summary:** Exposes an authenticated loopback REST/MCP endpoint on `127.0.0.1:59432` so custom Windows `.exe` apps can sync state safely.
+* **User Intention (Non-Negotiable):** Custom desktop and note-taking apps sync state through `127.0.0.1:59432` without bundling Google or Mega SDKs.
+* **Design Guardrails:** Enforces `Authorization: Bearer <token>` (or `X-Local-Token`) from `%USERPROFILE%\.local\share\ecosystem-secrets.json`, `Origin` rejection (`403`), strict `Host` validation, `?app=` slug allowlist (`^[a-z0-9][a-z0-9_-]{0,63}$`), clean SQLite `VACUUM INTO` snapshot capture, and non-destructive `(sha256, parent_revision)` conflict preservation (`<name>.conflict-<host>-<utc>.<ext>`).
+* **Status:** `[PLANNED]` — code anchors will be added once scaffolding is created.
 
 ---
 
-### [FEATURE: Virtualized-File-Explorer-GUI] | Aliases: file grid, visual explorer, lazy loading, upload progress
-> **1-Line Summary:** Displays all aggregated files in a 60 FPS virtualized table cached in SQLite, with real-time transfer progress bars.
-* **User Intention (Non-Negotiable):** Fast navigation across 50,000+ files. The user must see exactly where each file is stored, its sync status (`Synced`, `Uploading`, `Local-Only`, `Cloud-Only`), and instant full-text search results.
-* **Visual / UI Behavior:** Modern dark-theme file grid with sticky column headers, search bar with debounce, status chips, and per-row upload speed indicators.
-* **Code Anchors (Grep Targets):**
-  * `src/lib/components/VirtualFileExplorer.svelte` -> `virtualListConfig`, `searchQuery`
-  * `src-tauri/src/db/catalog.rs` -> `query_virtual_catalog`, `update_sync_state`
+### [FEATURE: Virtualized-File-Explorer-GUI] | Aliases: file grid, visual explorer, lazy loading, upload progress, uiux parity
+> **1-Line Summary:** Renders 50,000+ cached files at 60 FPS with `TanStack Virtual`, FTS5 search, throttled transfer telemetry, and full `UIUX.md` parity.
+* **User Intention (Non-Negotiable):** Instant navigation and filtering across pooled remotes showing sync states (`Synced`, `Uploading`, `Local-Only`, `Cloud-Only`, `Conflict`) and throttled transfer speeds.
+* **Design Guardrails:** Built to `UIUX.md` standards from day one — Light/Dark/System WCAG AA semantic tokens (`>= 4.5:1`), unified `Lucide` SVG icons, `Ctrl+K` quick-switcher, `?` shortcut cheat-sheet, Empty/Loading/Error state triad, Show/Hide progressive disclosure toggles, and themed destructive confirmation dialogs.
+* **Status:** `[PLANNED]` — code anchors will be added once scaffolding is created.
 
 ---
 
-## 3. Planned Features & App-Merge Wishlist
+## 3. Non-Goals & External API Constraints
+* **No Custom Android App-Data Sync:** Bidirectional syncing of private Android app-internal databases is explicitly out of scope (phone transfer covers photos, videos, and user-selected files).
+* **Google Photos Library API (Archived / Blocked):** Google restricted `photoslibrary` / `photoslibrary.readonly` scopes on March 31, 2025 to app-created media only, blocking full-library automated photo sync/dedup. Phone photos stay routed to Mega/Google Drive pools.
 
-### [WISHLIST: Google-Photos-API-Target] | Aliases: gphotos backup, google photos upload, mobile photo album
-> **1-Line Summary:** Direct album-based upload to Google Photos as an optional alternate target for phone photo streams.
-* **User Intention:** Allow routing compressed or high-value family photos directly to Google Photos albums alongside the raw file backup in Mega.
-* **Target Integration Point:** `src-tauri/src/rules/engine.rs` -> `evaluate_target_account`
+---
 
-### [WISHLIST: P2P-WiFi-Direct-Phone-Sync] | Aliases: wireless phone sync, syncthing receiver, local wifi photo transfer
-> **1-Line Summary:** Wirelessly sync photos and app state from phone to PC over local Wi-Fi without requiring a USB cable.
-* **Target Integration Point:** `src-tauri/src/adb/client.rs` -> `AdbDeviceManager::connect_wifi`
+## 4. Planned Enhancements & Wishlist (`[WISHLIST]`)
+
+### [WISHLIST: Kopia-Block-Delta-App-Snapshots] | Aliases: kopia snapshots, deduplicated app backup, fastcdc app state
+> **1-Line Summary:** Optional Kopia FastCDC block-delta snapshot bridge if custom `.exe` app workspaces grow too large for whole-file sync.
+* **User Intention:** Deduplicate large multi-file app state directories before cloud upload.
+
+### [WISHLIST: Virtual-Drive-Mount-WinFsp] | Aliases: winfsp mount, virtual windows drive, rclone mount
+> **1-Line Summary:** Optional post-v1 Windows virtual drive letter mounting via WinFsp + Rclone VFS once core catalog and sync pipelines are stable.
+* **User Intention:** Browse pooled cloud storage directly inside Windows File Explorer without premature kernel-driver complexity in v1.

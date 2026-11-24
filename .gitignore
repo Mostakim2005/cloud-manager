@@ -1,15 +1,26 @@
-# Node & Svelte
+# Node / TypeScript
 node_modules/
-.svelte-kit/
-build/
 dist/
+build/
+.vite/
 .env
 .env.*
 !.env.example
 
-# Tauri & Rust
-src-tauri/target/
-Cargo.lock
+# Go
+bin/
+*.exe
+*.dll
+*.test
+coverage.out
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
 # Operating System & IDE
 .DS_Store
@@ -23,8 +34,15 @@ Thumbs.db
 .vscode/
 *.local
 
-# Local SQLite databases & test logs
+# Local Databases, Staging & Secrets
+*.sqlite
 *.sqlite-wal
 *.sqlite-shm
+*.db
+*.bak
 *.log
 staging/
+rclone.conf
+ecosystem-secrets.json
+*.key
+*.pem

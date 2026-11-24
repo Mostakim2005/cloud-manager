@@ -1,114 +1,154 @@
 # Architectural Decisions, Pivots & Landmines (`DECISIONS_AND_TRAPS.md`)
-> **1-Line Summary:** Records why we chose specific approaches, what failed when we tried other ways, who made the decision, and critical code traps never to touch.
+> **1-Line Summary:** Records architectural pivots, AI-friendly stack choices, Wi-Fi+ADB sync decisions, and critical runtime landmines for Cloud Manager.
 
 ## 1. Architectural Decisions & Pivot History
 
+### [DECISION: AI-Friendly-Custom-Stack-And-Polyglot-OSS-Reuse] | Aliases: ai friendly stack, drop rust tauri, go python typescript
+> **1-Line Summary:** Replaced Rust/Tauri v2 with custom code strictly in TypeScript/JS, Go, or Python while allowing battle-tested reused OSS binaries in any language.
+* **Decision Maker:** `[DECIDED BY: HUMAN]`
+* **Original User Intention:** Build, maintain, and iterate on Cloud Manager rapidly using AI coding agents without heavyweight local toolchains or Rust borrow-checker churn.
+* **Options Considered:**
+  * **Option A (Rejected):** Tauri v2 (Rust backend + Svelte frontend) with an NSIS installer. Rejected because `rustc`/`cargo` are absent locally, prior Tauri experiments added friction, and AI agents maintain TypeScript/Go/Python faster.
+  * **Option B (Chosen):** Custom core + UI in **TypeScript/JS, Go, or Python**, wrapped as a portable Windows `.exe`, while reusing mature external OSS (`Rclone`, `LocalSend v2`, optional `Syncthing` LAN-only, optional `ADB`, `SQLite`) regardless of upstream language.
+* **Visual Pivot Map:**
+
+```mermaid
+flowchart LR
+    classDef badNode fill:#991b1b,stroke:#7f1d1d,color:#ffffff
+    classDef goodNode fill:#0f766e,stroke:#115e59,color:#ffffff
+
+    subgraph Failed["Rejected: Rust + Tauri v2 Custom Core"]
+        A1["Rust IPC + Cargo + NSIS"]:::badNode --> A2["Slow AI Iteration & Missing Local Toolchain"]:::badNode
+    end
+    subgraph Active["Active: AI-Friendly Custom Stack + Polyglot OSS"]
+        B1["Custom: TypeScript / Go / Python"]:::goodNode --> B2["Fast AI Verification + Portable EXE"]:::goodNode
+        B3["Reused OSS: Rclone / LocalSend / ADB"]:::goodNode --> B2
+    end
+
+    subgraph Legend["Legend (Color Guide)"]
+        L1["Red = Rejected Complexity"]:::badNode
+        L2["Teal = Active AI-Maintainable Architecture"]:::goodNode
+    end
+```
+
+* **Scope:** Planned core daemon & TypeScript frontend.
+
+---
+
 ### [DECISION: Hybrid-Rclone-Modular-Assembly] | Aliases: rclone daemon, modular cloud stack, custom vs rclone
-> **1-Line Summary:** Adopted Rclone Core in daemon mode for Google Drive and Mega transport while keeping YouTube, ADB, and UI as decoupled modular subsystems.
+> **1-Line Summary:** Adopted Rclone Core (`>= v1.66`) in daemon mode with `union` and `hasher` overlays for Google Drive and Mega while keeping YouTube, Phone Sync, and UI decoupled.
 * **Decision Maker:** `[DECIDED BY: HUMAN]`
-* **Original User Intention:** Centralize multiple Google Drive and Mega accounts into a customizable sync manager without being locked into a rigid monolithic app.
 * **Options Considered:**
-  * **Option A (Rejected):** Writing a monolithic custom Go/Rust client implementing Mega.nz's proprietary C++ crypto protocol and Google Drive APIs from scratch. Rejected because Mega's client-side node cryptography is complex to maintain and easily breaks on API changes.
-  * **Option B (Chosen):** Hybrid best-of-breed assembly: Rclone handles low-level cloud protocols and cryptographic handshakes; a lightweight Tauri desktop app orchestrates the rule engine, ADB phone transfers, and YouTube uploads.
-* **Visual Pivot Map (What Failed vs. What Works):**
+  * **Option A (Rejected):** Writing custom Mega.nz crypto and Google Drive APIs from scratch.
+  * **Option B (Chosen):** Supervising `rclone rcd` (authenticated ephemeral loopback + DPAPI-encrypted `rclone.conf`) as the cloud transport adapter.
+* **Visual Pivot Map:**
 
 ```mermaid
 flowchart LR
-    subgraph Failed["❌ Option A: Monolithic Client From Scratch"]
-        A1[Custom Mega Protocol Code] --> A2[Node Crypto Desyncs & API Breakages]
+    classDef badNode fill:#991b1b,stroke:#7f1d1d,color:#ffffff
+    classDef goodNode fill:#0f766e,stroke:#115e59,color:#ffffff
+
+    subgraph Failed["Rejected: Monolithic Custom Cloud Client"]
+        A1["Custom Mega Crypto & GDrive Stack"]:::badNode --> A2["Node Desyncs & High Maintenance"]:::badNode
     end
-    subgraph Active["✅ Option B: Hybrid Modular Assembly (Active)"]
-        B1[Rclone Daemon] --> B2[Handles Mega & GDrive Crypto Reliably]
-        B3[Dedicated Modules] --> B4[Clean YouTube, ADB & Custom .EXE APIs]
+    subgraph Active["Active: Rclone Daemon + Modular Adapters"]
+        B1["rclone rcd with hasher + union"]:::goodNode --> B2["Reliable Mega & GDrive Transport"]:::goodNode
+        B3["Decoupled Wi-Fi / ADB / YouTube / :59432"]:::goodNode --> B2
+    end
+
+    subgraph Legend["Legend (Color Guide)"]
+        L1["Red = Rejected Approach"]:::badNode
+        L2["Teal = Active Modular Architecture"]:::goodNode
     end
 ```
 
-* **Code Anchors (Grep Targets):**
-  * `src-tauri/src/rclone/supervisor.rs` -> `RcloneDaemonSupervisor::start`
+* **Scope:** Planned Rclone supervisor module.
 
 ---
 
-### [DECISION: ADB-MediaStore-Metadata-Pre-Filter] | Aliases: phone sync filter, adb metadata check, avoid full transfer
-> **1-Line Summary:** Pre-filters phone photos directly on Android using MediaStore metadata to transfer only genuinely new media over ADB.
+### [DECISION: Dual-Mode-WiFi-LAN-And-ADB-Phone-Sync] | Aliases: wifi phone sync, adb mediastore filter, lan p2p media
+> **1-Line Summary:** Upgraded phone media delta sync to support Same-Router Wi-Fi P2P (`:53317`) alongside pre-filtered ADB MediaStore queries into one SHA-256 pipeline.
 * **Decision Maker:** `[DECIDED BY: HUMAN]`
-* **Original User Intention:** An easy, optimal way to know which photos/videos on the phone are already synced to PC and avoid re-copying existing files during periodic connections.
 * **Options Considered:**
-  * **Option A (Rejected):** Pulling all files from `/sdcard/DCIM/Camera/` to a temporary directory on the PC and checking SHA-256 hashes locally. Rejected because transferring 40+ GB over USB/WiFi just to discard duplicates wastes massive bandwidth and takes hours.
-  * **Option B (Chosen):** Running a fast metadata query on the phone via `adb shell content query` (matching file size and modification timestamps against the local SQLite database). Only missing files are transferred via `adb pull`.
-* **Visual Pivot Map (What Failed vs. What Works):**
+  * **Option A (Rejected):** Pulling all `/sdcard/DCIM/` files over USB ADB first to deduplicate locally, or requiring USB cables for routine transfers.
+  * **Option B (Chosen):** Opt-in Same-Router Wi-Fi P2P (LocalSend v2 HTTPS/TLS + PIN, optional Syncthing LAN-only) **plus** Android MediaStore metadata pre-filtering over ADB (`images/media` + `video/media`), feeding one streaming SHA-256 deduplication pipeline.
+* **Visual Pivot Map:**
 
 ```mermaid
 flowchart LR
-    subgraph Failed["❌ Option A: Pull Everything Then Filter"]
-        A1[Pull 50GB over ADB] --> A2[Compute Hashes Locally] --> A3[Discard 95% of duplicates (Very Slow)]
+    classDef badNode fill:#991b1b,stroke:#7f1d1d,color:#ffffff
+    classDef goodNode fill:#0f766e,stroke:#115e59,color:#ffffff
+
+    subgraph Failed["Rejected: Pull-All USB-Only Copy"]
+        A1["Pull 50 GB over USB"]:::badNode --> A2["Hash & Discard 95% Duplicates"]:::badNode
     end
-    subgraph Active["✅ Option B: Phone-Side Metadata Query"]
-        B1[Query Phone MediaStore in 100ms] --> B2[Compare with SQLite Catalog] --> B3[Pull ONLY New Files (Blazing Fast)]
+    subgraph Active["Active: Wi-Fi LAN P2P + MediaStore ADB Delta"]
+        B1["Wi-Fi LocalSend / Syncthing LAN"]:::goodNode --> B3["Unified SHA-256 & YYYY/MM Pipeline"]:::goodNode
+        B2["ADB MediaStore Pre-Filter"]:::goodNode --> B3
+    end
+
+    subgraph Legend["Legend (Color Guide)"]
+        L1["Red = Rejected Bandwidth Waste"]:::badNode
+        L2["Teal = Active Dual-Mode Delta Ingestion"]:::goodNode
     end
 ```
 
-* **Code Anchors (Grep Targets):**
-  * `src-tauri/src/adb/client.rs` -> `AdbDeviceManager::query_mediastore`
-  * `src-tauri/src/adb/sync_worker.rs` -> `filter_unsynced_items`
+* **Scope:** Planned Phone Ingestion subsystem.
 
 ---
 
-### [DECISION: YouTube-As-Dedicated-Video-Archive] | Aliases: youtube private pipeline, video storage routing, bypass cloud storage
-> **1-Line Summary:** Routed video recordings to YouTube via Data API v3 with private visibility and playlist targeting instead of filling Google Drive or Mega quotas.
+### [DECISION: Hardened-Loopback-Backplane-And-Ecosystem-Contract] | Aliases: port 59432 security, ecosystem contract, csrf guard
+> **1-Line Summary:** Secured `:59432` per `ECOSYSTEM_INTEGRATION_CONTRACT.md` v2.0.0 with Bearer auth, `Origin` `403` rejection, `Host` checks, and separate opt-in LAN `:53317`.
 * **Decision Maker:** `[DECIDED BY: HUMAN]`
-* **Original User Intention:** Automatically upload screen recordings and project videos with pre-designated private settings and playlist assignment.
-* **Options Considered:**
-  * **Option A (Rejected):** Storing video recordings directly in Google Drive or Mega accounts. Rejected because high-bitrate screen recordings rapidly exhaust the 15 GB Google Drive and 20 GB Mega free limits, and cannot be streamed conveniently across devices.
-  * **Option B (Chosen):** Uploading to YouTube with enforced `privacyStatus: private` and automatic assignment to specific playlist IDs.
-* **Code Anchors (Grep Targets):**
-  * `src-tauri/src/youtube/uploader.rs` -> `YouTubeUploader::upload_resumable_video`
+* **Rationale:** Unauthenticated localhost HTTP servers are exposed to browser CSRF and DNS rebinding. Isolating `127.0.0.1:59432` (Bearer auth via `ecosystem-secrets.json`) from opt-in LAN P2P (`53317`, non-colliding with GaussBoard `53318`/`53319`) protects custom `.exe` app databases.
+* **Scope:** Planned Localhost Backplane & LAN P2P boundary.
+
+---
+
+### [DECISION: YouTube-As-Dedicated-Video-Archive] | Aliases: youtube private pipeline, video storage routing
+> **1-Line Summary:** Routes large screen recordings to YouTube via Data API v3 with enforced `private` visibility and playlist assignment instead of filling cloud drive quotas.
+* **Decision Maker:** `[DECIDED BY: HUMAN]`
+* **Scope:** Planned YouTube pipeline.
 
 ---
 
 ### [DECISION: SQLite-WAL-Local-Virtual-Catalog] | Aliases: local file cache, sqlite wal mode, offline file explorer
-> **1-Line Summary:** Caches all multi-cloud file metadata in a local SQLite database in WAL mode to provide sub-millisecond explorer browsing without network latency.
+> **1-Line Summary:** Caches multi-cloud metadata, remote change cursors, tombstones, and job queues in SQLite WAL + FTS5 for sub-5 ms offline browsing.
 * **Decision Maker:** `[DECIDED BY: AGENT - Approved by Human]`
-* **Original User Intention:** High-speed, responsive file explorer that lazy-loads files without stuttering.
-* **Options Considered:**
-  * **Option A (Rejected):** Querying Google Drive and Mega APIs live whenever the user browses a folder. Rejected because cloud API rate limits, latency, and pagination cause noticeable UI lag.
-  * **Option B (Chosen):** Local SQLite catalog with Write-Ahead Logging (WAL) and FTS5 search. Cloud sync happens in the background, updating the SQLite state asynchronously.
-* **Code Anchors (Grep Targets):**
-  * `src-tauri/src/db/catalog.rs` -> `DatabaseManager::initialize_schema`
+* **Scope:** Planned SQLite catalog & migration engine.
 
 ---
 
-## 2. Do-Not-Touch Engineering Landmines (Traps)
+## 2. Do-Not-Touch Engineering Landmines (`[TRAP]`)
+
+### [TRAP: Mega-Missing-ModTime-And-Remote-Hash] | Aliases: mega bisync loop, mega modtime bug, rclone hasher
+> **1-Line Summary:** NEVER run timestamp-based `rclone bisync` on Mega remotes without Rclone `hasher` (`>= v1.66`), because Mega lacks native `ModTime` and standard remote hashes.
+* **Strict Rule:** Treat Mega pools as append/archive targets tracked by local SHA-256 + Rclone `hasher` (`--compare size,checksum`), and reserve native `Changes.list` `bisync` for Google Drive.
 
 ### [TRAP: Mega-Concurrent-Node-Session-Limits] | Aliases: mega node desync, mega session error, concurrent mega upload
-> **1-Line Summary:** NEVER spawn independent raw Mega upload threads outside of Rclone's connection pool, or Mega will return node invalidation errors.
-* **Strict Rule:** **NEVER** bypass Rclone to issue simultaneous raw HTTP uploads to the same Mega account.
-* **Why This Trap Exists (Plain English):** Mega.nz maintains a strictly synchronized client-side node tree. When multiple uncoordinated processes write to the same account at once, node sequence numbers diverge, causing Mega's API to reject subsequent uploads with session expiration and node-not-found errors.
-* **Protected Code Anchors (Grep Targets):**
-  * `src-tauri/src/rclone/supervisor.rs` -> `RcloneDaemonSupervisor::get_upload_queue`
+> **1-Line Summary:** NEVER spawn independent raw Mega upload threads outside Rclone's `rcd` pool, or Mega will return node invalidation and session errors.
+* **Strict Rule:** Route all Mega transfers exclusively through the single supervised `rclone rcd` process and handle HTTP `509` residential IP bandwidth ceilings with backoff.
 
----
+### [TRAP: Unauthenticated-Loopback-CSRF-And-Live-SQLite-Copy] | Aliases: port 59432 csrf, dns rebinding, live sqlite corruption
+> **1-Line Summary:** NEVER expose `127.0.0.1:59432` without Bearer/`Origin`/`Host` validation, and NEVER copy a live `.sqlite` file without `VACUUM INTO` snapshots.
+* **Strict Rule:** Reject requests with browser `Origin` headers (`403`), enforce `ecosystem-secrets.json` tokens, sanitize `?app=` and filenames, and capture live app SQLite DBs via `VACUUM INTO` before syncing.
+
+### [TRAP: Orphaned-Child-Processes-Without-Job-Object] | Aliases: orphan rclone process, windows job object, child cleanup
+> **1-Line Summary:** NEVER spawn `rclone rcd` or `adb` on Windows without attaching them to a Windows Job Object (`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`).
+* **Strict Rule:** Bind all daemon child processes to a Job Object and call `core/quit` on clean shutdown so crashes never leave zombie Mega/port locks behind.
 
 ### [TRAP: ADB-Windows-CRLF-Double-Newline] | Aliases: adb newline bug, adb windows parse error, adb shell output
-> **1-Line Summary:** NEVER parse raw string output from `adb shell` on Windows without trimming carriage returns (`\r\r\n`), or file size parsing will fail.
-* **Strict Rule:** **NEVER** directly parse integer bytes from `adb shell` standard output without running a regex sanitization for `\r`.
-* **Why This Trap Exists (Plain English):** Windows converts standard UNIX line feeds into CRLF. When `adb.exe` runs an Android shell command, the Android pty adds `\r\n`, and the Windows console runtime adds an additional `\r`, resulting in `\r\r\n`. Parsing `123456\r\r\n` directly as a 64-bit integer throws a `ParseIntError`.
-* **Protected Code Anchors (Grep Targets):**
-  * `src-tauri/src/adb/client.rs` -> `sanitize_adb_output`
+> **1-Line Summary:** NEVER parse `adb shell` stdout on Windows without stripping `\r`, and NEVER confuse MediaStore `date_modified` (seconds) with `datetaken` (ms).
+* **Strict Rule:** Execute ADB via argv arrays (`shell=False`), query both `images/media` and `video/media` using `relative_path`, sanitize `\r\r\n`, and normalize timestamps to UTC seconds.
 
----
+### [TRAP: Google-OAuth-Testing-Mode-7-Day-Expiry] | Aliases: oauth testing expiry, 7 day refresh token, youtube oauth
+> **1-Line Summary:** NEVER leave the Google Cloud OAuth consent screen in `Testing` mode for production personal use, or refresh tokens will expire every 7 days.
+* **Strict Rule:** Document switching the personal OAuth app to `In Production`, request minimal scopes (`youtube.upload` + `youtube.force-ssl` for playlists), and store tokens via Windows DPAPI.
 
 ### [TRAP: YouTube-Daily-Quota-Burn] | Aliases: youtube quota 10000, 403 quota exceeded, polling video status
-> **1-Line Summary:** NEVER poll the YouTube Data API to check video processing status in a fast loop; uploads cost 1,600 units out of the 10,000 daily limit.
-* **Strict Rule:** **NEVER** poll `videos.list` or `videos.insert` repeatedly after an upload completes.
-* **Why This Trap Exists (Plain English):** Google assigns a default ceiling of 10,000 quota units per day per project. A single video insert uses 1,600 units (allowing ~6 uploads per day). Repeated polling burns the remaining units within seconds, returning `403 QuotaExceeded` for all users until midnight Pacific Time.
-* **Protected Code Anchors (Grep Targets):**
-  * `src-tauri/src/youtube/uploader.rs` -> `handle_resumable_completion`
+> **1-Line Summary:** NEVER poll `videos.list` after uploads, and NEVER restart failed uploads without persisting the resumable `Location` URI and PT quota ledger.
+* **Strict Rule:** Track daily PT usage (1,650 units/video, hard cap `9,600 / 10,000`) and persist resumable `Location` URIs in SQLite.
 
----
-
-### [TRAP: SQLite-Multi-Thread-Busy-Timeout] | Aliases: database locked, sqlite busy, ui freeze
-> **1-Line Summary:** NEVER open an SQLite connection in the desktop app without setting `PRAGMA busy_timeout = 5000;` and enabling WAL mode.
-* **Strict Rule:** **NEVER** execute write queries from background sync threads without a 5-second busy timeout.
-* **Why This Trap Exists (Plain English):** The background sync daemon continuously records upload progress and delta events while the desktop GUI reads from the catalog for 60 FPS scrolling. Without WAL mode and busy timeout, concurrent writes throw `database is locked` (`SQLITE_BUSY`), crashing or freezing the UI.
-* **Protected Code Anchors (Grep Targets):**
-  * `src-tauri/src/db/connection.rs` -> `create_sqlite_connection`
+### [TRAP: SQLite-Multi-Thread-Busy-Timeout] | Aliases: database locked, sqlite busy, ui freeze, progress wal thrash
+> **1-Line Summary:** NEVER open SQLite without `WAL` + `PRAGMA busy_timeout = 5000`, and NEVER flush per-chunk progress bars into SQLite on every tick.
+* **Strict Rule:** Keep live throughput meters in memory (`<= 5 Hz` SSE to UI), write SQLite only on discrete state transitions, and gate schema changes with `PRAGMA user_version` + `.bak` snapshots.
