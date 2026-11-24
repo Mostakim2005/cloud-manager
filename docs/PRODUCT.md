@@ -1,79 +1,80 @@
 # Product Intent & Feature Map (`PRODUCT.md`)
-> **1-Line Summary:** The permanent source of truth for user intentions, `[PLANNED]` feature specs, non-goals, and roadmap for the Cloud Manager desktop system.
+> **1-Line Summary:** The permanent source of truth for user intentions, locked `[PLANNED]` v1 feature specs, non-goals, and wishlist for Cloud Manager.
 
 ## 1. Core Vision & User Experience Intent
-* **Blueprint Status:** Pre-implementation blueprint (`[PLANNED]` — zero application source code exists yet; final stack lock pending user confirmation).
-* **AI-Friendly Language & Reuse Policy:** All custom-written code is restricted to **TypeScript/JavaScript, Go, or Python** so AI agents can reliably build, test, and maintain the codebase. Reused battle-tested open-source binaries and libraries (such as Rclone, LocalSend Android app, Syncthing, ADB, and SQLite) may be implemented in any language.
-* **What This App Does (Plain English):** Cloud Manager aggregates multiple Google Drive and Mega.nz accounts into a unified virtual storage pool, deterministically routes incoming files by origin/extension/size, syncs new phone photos and videos over **both Same-Router Wi-Fi LAN P2P and USB/Wi-Fi ADB**, archives designated videos as private YouTube playlists, and exposes an authenticated `127.0.0.1:59432` backplane for custom Windows `.exe` and note-taking apps.
-* **How It Must Feel to Use:** Responsive, instantaneous, and zero-freeze. Local catalog browsing and FTS5 search resolve in under 5 ms from SQLite WAL without blocking on cloud APIs, paired with live throttled (`<= 5 Hz`) transfer progress and full Light/Dark/System UI parity.
+* **Blueprint Status:** **Stack & Scope Locked (`[PLANNED]` — awaiting user "go" to start Phase 1 scaffolding)** using **Go Core Daemon (`cloud-managerd.exe` + `cloud-manager.exe`) + TypeScript Local Browser UI + System Tray** (portable Electron `.exe` wrapper deferred post-v1).
+* **AI-Friendly Language & Reuse Policy:** Custom code stays strictly in **Go** (core daemon, adapters, CLI/MCP) and **TypeScript/JavaScript** (frontend UI) for reliable AI development and automated CI checks. Reused battle-tested open-source tools (`Rclone`, unmodified upstream `Syncthing`, `Kopia`, `ADB`, `SQLite 3`) are integrated cleanly over local APIs/CLIs.
+* **What This App Does (Plain English):** Cloud Manager pools multiple Google Drive and Mega.nz accounts into one virtual catalog, routes incoming files deterministically, runs two-way delta sync between PC and phone over **Wi-Fi (Syncthing LAN-Only + Ephemeral Browser QR Drop-Zone) and Wireless/USB ADB**, archives videos to private YouTube playlists, and exposes an authenticated `127.0.0.1:59432` backplane + Kopia block-delta snapshots for custom Windows `.exe` apps and Pentagram tools.
+* **How It Must Feel to Use:** Instant and zero-freeze. Local FTS5 browsing resolves under 5 ms from SQLite WAL without waiting on cloud APIs, paired with throttled (`<= 5 Hz`) transfer telemetry and Light/Dark/System UI parity.
 
 ---
 
-## 2. Planned Core Features (Blueprint — `[PLANNED]`)
+## 2. Locked v1 Features (`[PLANNED]`)
 
-### [FEATURE: Multi-Cloud-Storage-Pooling] | Aliases: account manager, drive pooling, quota aggregation, mega gdrive merge
-> **1-Line Summary:** Combines multiple independent Google Drive and Mega.nz accounts into a cohesive virtual storage pool via Rclone `union` and `hasher`.
-* **User Intention (Non-Negotiable):** Connect multiple free and paid Google Drive and Mega accounts simultaneously, visualize per-account and aggregated free/used quotas, and browse/manage files in one unified catalog.
-* **Design Guardrails:** Uses Rclone `union` (`epmfs`/`mfs`) plus Rclone `hasher` overlays (`>= v1.66`) on Mega remotes so Mega's lack of native `ModTime` and standard remote hashes does not trigger re-upload loops.
-* **Status:** `[PLANNED]` — code anchors will be added once scaffolding is created.
-
----
-
-### [FEATURE: Smart-Routing-Rule-Engine] | Aliases: automated routing, file sorting, origin rules, extension dispatch
-> **1-Line Summary:** Deterministically dispatches incoming files to designated cloud targets using priority-ordered rules and atomic in-flight quota reservation.
-* **User Intention (Non-Negotiable):** Automatically route files (e.g., PDFs to Google Drive, raw media to Mega pools, recordings to YouTube) by origin directory, extension, or size without manual sorting.
-* **Design Guardrails:** Evaluates rules strictly by `priority ASC` (`first-match-wins`, explicit `stop_on_match`) with a mandatory catch-all fallback rule, backed by an in-memory `QuotaReservationTracker` (`free - inflight - 500 MiB safety floor`) and automatic pool spillover.
-* **Status:** `[PLANNED]` — code anchors will be added once scaffolding is created.
+### [FEATURE: Multi-Cloud-Storage-Pooling] | Aliases: account manager, drive pooling, quota aggregation, mega gdrive merge, duplicate inspector
+> **1-Line Summary:** Pools Google Drive (two-way `bisync`) and Mega.nz (Append/Archive via `hasher`) into one unified view with a Cross-Account Duplicate & Orphan Inspector.
+* **User Intention (Non-Negotiable):** Connect multiple Google Drive and Mega accounts simultaneously, monitor individual and pooled gigabyte quotas, browse files in one catalog, and reclaim duplicate storage across accounts.
+* **Locked Design (`Charlie 1` + `Delta 3`):** Uses Rclone (`>= v1.66`) `union` (`epmfs`/`mfs`) + `hasher` overlays on Mega remotes as Append/Archive tiers (eliminating Mega `ModTime` re-upload loops) while running two-way `bisync` (`Changes.list`) on Google Drive, plus a SHA-256 **Cross-Account Duplicate & Orphan Inspector**.
+* **Status:** `[PLANNED]` — code anchors will be added during Phase 1/2 scaffolding.
 
 ---
 
-### [FEATURE: Phone-Media-Delta-Sync-WiFi-And-ADB] | Aliases: phone sync, wifi transfer, lan p2p, adb transfer, photo importer, dcim pull
-> **1-Line Summary:** Pulls only newly captured phone photos, videos, and arbitrary files via Same-Router Wi-Fi LAN P2P or USB/Wi-Fi ADB into one SHA-256 deduplicated pipeline.
-* **User Intention (Non-Negotiable):** Transfer only new media from Android to PC over home Wi-Fi (without requiring a USB cable) **and** support USB/Wi-Fi ADB bulk recovery, avoiding duplicate multi-gigabyte copies.
-* **Design Guardrails:**
-  * **Wi-Fi LAN P2P (Opt-In, OFF by default):** Isolated port (`53317`) supporting LocalSend v2 over HTTPS/TLS with cert fingerprint pinning + 6-digit PIN/accept prompt, plus optional Syncthing in LAN-only mode (Global Discovery/Relays disabled).
-  * **ADB Fallback / Bulk Mode:** Queries `images/media` and `video/media` (`_id,relative_path,_display_name,_size,date_modified,datetaken`), normalizes timestamps to UTC seconds, and trims Windows `\r\r\n`.
-  * **Canonical Ingestion:** Both paths feed one streaming SHA-256 deduplication and `/Photos/YYYY/MM/` filing pipeline.
-* **Status:** `[PLANNED]` — code anchors will be added once scaffolding is created.
+### [FEATURE: Smart-Routing-Rule-Engine] | Aliases: automated routing, file sorting, origin rules, dry run simulator, quota spillover
+> **1-Line Summary:** Dispatches files deterministically via priority-ordered rules with a drag-and-drop Rule Dry-Run Simulator, Quota Spillover, and Bandwidth Scheduler.
+* **User Intention (Non-Negotiable):** Route files automatically by origin folder, extension, or size, test rule behavior safely beforehand, spill gracefully when an account nears capacity, and throttle transfers by schedule.
+* **Locked Design (`Delta 1` + `Delta 2`):** Strict `priority ASC` (`first-match-wins`) dispatch with a catch-all fallback rule, in-memory `QuotaReservationTracker` (`500 MiB` safety floor) spillover, drag-and-drop **Rule Dry-Run Simulator**, and time-of-day **Bandwidth Scheduler**.
+* **Status:** `[PLANNED]` — code anchors will be added during Phase 2 scaffolding.
+
+---
+
+### [FEATURE: Phone-Media-Delta-Sync-WiFi-And-ADB] | Aliases: phone sync, wifi transfer, syncthing lan, wireless adb, browser qr dropzone, rag webhook
+> **1-Line Summary:** Runs two-way PC <-> phone folder delta sync across images, videos, PDFs, Markdown, Obsidian, and GaussBoard via Syncthing LAN-Only, Wireless/USB ADB, and a Browser QR Drop-Zone, pinging `RAG Manager`.
+* **User Intention (Non-Negotiable):** Click Sync (or enable per-folder auto-sync) over Wi-Fi or USB to inspect exact new/changed/conflicting media, PDFs, Markdown, `Obsidian`, `GaussBoard`, and `Music` folders without multicast discovery failures, and push files both ways.
+* **Locked Design (`Bravo 1` + `Bravo 4`):**
+  * **Unmodified Upstream Syncthing (LAN-Only via REST API + Event Stream — NOT forked):** One-time QR pairing with Android `Syncthing-Fork` (`Global Discovery`/relays disabled) for two-way block-level folder delta sync, controlled via Syncthing's local REST API for click-to-sync pause/resume and per-file diff progress.
+  * **Wireless ADB + USB ADB (Android 11+ QR Pairing):** In-UI Wireless ADB QR pairing + MediaStore (`images/media`, `video/media`) & folder diffing for two-way pull/push without any phone sync app.
+  * **Ephemeral Browser QR Drop-Zone (`https://<lan-ip>:53317` + 6-digit PIN, OFF by default):** Instant bidirectional browser upload/download via QR scan.
+  * **Pentagram Live Re-Index Hook (`Bravo 4`):** Automatically fires `POST http://127.0.0.1:27130/v1/ingest/event` to `RAG Manager` whenever synced `Obsidian` or `GaussBoard` files update.
+* **Status:** `[PLANNED]` — code anchors will be added during Phase 2 scaffolding.
 
 ---
 
 ### [FEATURE: YouTube-Private-Video-Pipeline] | Aliases: youtube uploader, private video sync, playlist automation
-> **1-Line Summary:** Uploads designated videos to YouTube as enforced `private` videos assigned to pre-configured playlists via resumable HTTP chunks.
-* **User Intention (Non-Negotiable):** Archive screen recordings and large videos to private YouTube playlists instead of exhausting cloud drive quotas.
-* **Design Guardrails:** Enforces `status.privacyStatus = "private"`, persists resumable `Location` session URIs across restarts, tracks daily quota units in a persistent `youtube_quota_ledger` (America/Los_Angeles reset, hard cap `9,600 / 10,000` units), and documents `In Production` OAuth consent to prevent 7-day token expiry.
-* **Status:** `[PLANNED]` — code anchors will be added once scaffolding is created.
+> **1-Line Summary:** Streams 16 MB video chunks using a custom ~200 LOC Go YouTube v3 SDK uploader with forced `private` visibility, persisted resume URIs, and PT quota tracking.
+* **User Intention (Non-Negotiable):** Archive screen recordings and videos directly to private YouTube playlists without exhausting cloud storage quotas.
+* **Locked Design (`Charlie 3`):** Lightweight custom Go module using Google's official YouTube Data API v3 Go SDK enforcing `privacyStatus = "private"`, persisting resumable `Location` URIs in SQLite, capping daily Pacific Time quota (`9,600 / 10,000` units), and documenting `In Production` OAuth consent.
+* **Status:** `[PLANNED]` — code anchors will be added during Phase 2 scaffolding.
 
 ---
 
-### [FEATURE: Localhost-App-Backplane-API] | Aliases: exe sync, custom app api, localhost backplane, cross-app state
-> **1-Line Summary:** Exposes an authenticated loopback REST/MCP endpoint on `127.0.0.1:59432` so custom Windows `.exe` apps can sync state safely.
-* **User Intention (Non-Negotiable):** Custom desktop and note-taking apps sync state through `127.0.0.1:59432` without bundling Google or Mega SDKs.
-* **Design Guardrails:** Enforces `Authorization: Bearer <token>` (or `X-Local-Token`) from `%USERPROFILE%\.local\share\ecosystem-secrets.json`, `Origin` rejection (`403`), strict `Host` validation, `?app=` slug allowlist (`^[a-z0-9][a-z0-9_-]{0,63}$`), clean SQLite `VACUUM INTO` snapshot capture, and non-destructive `(sha256, parent_revision)` conflict preservation (`<name>.conflict-<host>-<utc>.<ext>`).
-* **Status:** `[PLANNED]` — code anchors will be added once scaffolding is created.
+### [FEATURE: Localhost-App-Backplane-API] | Aliases: exe sync, custom app api, localhost backplane, kopia snapshots, mcp cli
+> **1-Line Summary:** Provides an authenticated `127.0.0.1:59432` HTTP + `/mcp` backplane, `--json` CLI, `cloud-manager://` URI, `VACUUM INTO` safety, and Kopia block-delta snapshots.
+* **User Intention (Non-Negotiable):** Let custom `.exe` and Pentagram apps push/pull state over `127.0.0.1:59432` or CLI/MCP without bundling cloud SDKs, keeping large app directories deduplicated.
+* **Locked Design (`Delta 4`, `Delta 5`, `Delta 6`):** Full `ECOSYSTEM_INTEGRATION_CONTRACT.md` v2.0.0 compliance (`Bearer`/`X-Local-Token` via `ecosystem-secrets.json`, `Origin` `403`, `Host` & `?app=` checks), dual `ecosystem-registry.json` + `HKCU` `cloud-manager://` registration, `%USERPROFILE%\.local\bin\cloud-manager.exe` `--json` CLI, SQLite `VACUUM INTO` snapshots, conflict preservation, and **Kopia (`Apache-2.0`)** block-delta snapshots for large `.exe` app directories.
+* **Status:** `[PLANNED]` — code anchors will be added during Phase 1/2/4 scaffolding.
 
 ---
 
-### [FEATURE: Virtualized-File-Explorer-GUI] | Aliases: file grid, visual explorer, lazy loading, upload progress, uiux parity
-> **1-Line Summary:** Renders 50,000+ cached files at 60 FPS with `TanStack Virtual`, FTS5 search, throttled transfer telemetry, and full `UIUX.md` parity.
-* **User Intention (Non-Negotiable):** Instant navigation and filtering across pooled remotes showing sync states (`Synced`, `Uploading`, `Local-Only`, `Cloud-Only`, `Conflict`) and throttled transfer speeds.
-* **Design Guardrails:** Built to `UIUX.md` standards from day one — Light/Dark/System WCAG AA semantic tokens (`>= 4.5:1`), unified `Lucide` SVG icons, `Ctrl+K` quick-switcher, `?` shortcut cheat-sheet, Empty/Loading/Error state triad, Show/Hide progressive disclosure toggles, and themed destructive confirmation dialogs.
-* **Status:** `[PLANNED]` — code anchors will be added once scaffolding is created.
+### [FEATURE: Virtualized-File-Explorer-GUI] | Aliases: file grid, visual explorer, material 3 ui, ctrl+k picker, quick look
+> **1-Line Summary:** Renders 50,000+ SQLite-cached files at 60 FPS with Clean Minimalist + Material 3 Tonal Surfaces, `Ctrl+K` quick-picker, `?` cheat-sheet, density toggle, and `Space` Quick-Look.
+* **User Intention (Non-Negotiable):** Sub-5 ms offline search and 60 FPS scrolling with instant status feedback, zero contrast issues across themes, and effortless keyboard-first navigation.
+* **Locked Design (`Echo 1`, `Echo 3`, `Echo 4`, `Echo 5`):** `TanStack Virtual` + `Lucide` SVGs styled with **Clean Minimalist + Material 3 Tonal Surfaces** (Light/Dark/System WCAG AA `>= 4.5:1`), `Ctrl+K` quick-picker + `?` shortcut cheat-sheet, `Comfortable`/`Compact` density toggle, `Space` Quick-Look / Lightbox preview for staged media, Empty/Loading/Error states, Show/Hide toggles, and themed destructive confirmations.
+* **Status:** `[PLANNED]` — code anchors will be added during Phase 3 scaffolding.
 
 ---
 
 ## 3. Non-Goals & External API Constraints
-* **No Custom Android App-Data Sync:** Bidirectional syncing of private Android app-internal databases is explicitly out of scope (phone transfer covers photos, videos, and user-selected files).
-* **Google Photos Library API (Archived / Blocked):** Google restricted `photoslibrary` / `photoslibrary.readonly` scopes on March 31, 2025 to app-created media only, blocking full-library automated photo sync/dedup. Phone photos stay routed to Mega/Google Drive pools.
+* **No Custom Android App-Data Sync:** Bidirectional syncing of private Android app-internal databases is out of scope.
+* **Google Photos Library API (Archived / Blocked):** Restricted by Google on March 31, 2025 to app-created media only; phone photos route to Mega/Google Drive pools instead.
 
 ---
 
-## 4. Planned Enhancements & Wishlist (`[WISHLIST]`)
+## 4. Deferred Enhancements & Wishlist (`[WISHLIST]`)
 
-### [WISHLIST: Kopia-Block-Delta-App-Snapshots] | Aliases: kopia snapshots, deduplicated app backup, fastcdc app state
-> **1-Line Summary:** Optional Kopia FastCDC block-delta snapshot bridge if custom `.exe` app workspaces grow too large for whole-file sync.
-* **User Intention:** Deduplicate large multi-file app state directories before cloud upload.
+### [WISHLIST: Portable-Electron-Shell-Wrapper] | Aliases: electron shell, standalone desktop window, post-v1 wrapper
+> **1-Line Summary:** Optional post-v1 Electron portable `.exe` shell wrapping the local TypeScript UI (`Alpha 4` runs via local browser + System Tray in v1).
+* **User Intention:** Keep v1 lean via local browser UI + System Tray, with zero backend rewrite if a dedicated Electron `.exe` window is wrapped later.
 
 ### [WISHLIST: Virtual-Drive-Mount-WinFsp] | Aliases: winfsp mount, virtual windows drive, rclone mount
-> **1-Line Summary:** Optional post-v1 Windows virtual drive letter mounting via WinFsp + Rclone VFS once core catalog and sync pipelines are stable.
-* **User Intention:** Browse pooled cloud storage directly inside Windows File Explorer without premature kernel-driver complexity in v1.
+> **1-Line Summary:** Optional post-v1 Windows drive-letter mounting via WinFsp + Rclone VFS once core sync pipelines are battle-tested.
+* **User Intention:** Browse pooled cloud storage in Windows File Explorer without premature kernel-driver complexity in v1.

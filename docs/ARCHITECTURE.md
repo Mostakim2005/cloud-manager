@@ -1,5 +1,5 @@
 # System Architecture (`ARCHITECTURE.md`)
-> **1-Line Summary:** Plain-English architectural blueprint of Cloud Manager (`[PLANNED]`), covering AI-friendly stack policy, security boundaries, subsystem data flows, and verification plans.
+> **1-Line Summary:** Plain-English architectural blueprint of Cloud Manager (`[PLANNED]`, locked Go + TypeScript stack), security boundaries, subsystem data flows, and CI pipeline.
 
 ## 1. High-Level Visual System Map
 
@@ -11,48 +11,55 @@ flowchart TB
     classDef adapterNode fill:#6d28d9,stroke:#4c1d95,color:#ffffff
     classDef targetNode fill:#334155,stroke:#0f172a,color:#ffffff
 
-    subgraph UI["TypeScript Frontend (WCAG AA + TanStack Virtual)"]
-        EXP["Virtual Explorer + FTS5 Search"]:::uiNode
-        RULES_UI["Smart Routing + Dry-Run Bench"]:::uiNode
-        MEDIA_UI["Wi-Fi P2P + ADB Media Center"]:::uiNode
-        YT_UI["YouTube Private Archive Monitor"]:::uiNode
+    subgraph UI["TypeScript Browser UI + Go System Tray (Material 3 Tonal)"]
+        EXP["Virtual Explorer + Quick-Look + Density"]:::uiNode
+        RULES_UI["Routing Editor + Dry-Run Bench"]:::uiNode
+        MEDIA_UI["Phone Sync (Syncthing / ADB / QR)"]:::uiNode
+        YT_UI["YouTube Private Pipeline Monitor"]:::uiNode
     end
 
-    subgraph Core["Hardened Core Daemon (cloud-managerd: Go or Python)"]
+    subgraph Core["Go Core Daemon (cloud-managerd.exe + cloud-manager.exe --json)"]
         AUTH["Security Guard (Bearer, Origin 403, Host, Path Jail)"]:::secNode
-        BACKPLANE["Loopback API / MCP (127.0.0.1:59432)"]:::coreNode
+        BACKPLANE["Loopback HTTP / MCP (127.0.0.1:59432)"]:::coreNode
         SQL[("SQLite WAL + FTS5 (user_version, cursors, jobs)")]:::coreNode
-        RULE_ENG["Rule & Quota Engine (priority ASC + In-Flight Lock)"]:::coreNode
-        INGEST["Unified SHA-256 Ingestion & Dedup Pipeline"]:::coreNode
+        RULE_ENG["Router, Quota Spillover, Scheduler & Dedup"]:::coreNode
+        INGEST["Unified SHA-256 Ingestion + RAG Webhook"]:::coreNode
     end
 
-    subgraph Adapters["Isolated Adapters (Job Object Supervised)"]
-        LAN_P2P["Same-Router Wi-Fi P2P (HTTPS TLS :53317, OFF default)"]:::secNode
-        ADB["Optional ADB Worker (Argv-Only + CRLF Trim)"]:::adapterNode
-        YT_CLIENT["YouTube Data API v3 (Resumable + Quota Ledger)"]:::adapterNode
-        RCLONE["rclone rcd (127.0.0.1:0, 256-bit RC Auth, DPAPI Pass)"]:::adapterNode
+    subgraph Adapters["Job-Object Supervised Adapters"]
+        ST["Upstream Syncthing LAN-Only (REST API)"]:::adapterNode
+        LAN_QR["Browser QR Drop-Zone (HTTPS TLS :53317, OFF default)"]:::secNode
+        ADB["Wireless QR / USB ADB Worker (Argv-Only)"]:::adapterNode
+        YT_CLIENT["Go YouTube SDK Uploader (~200 LOC + Ledger)"]:::adapterNode
+        KOPIA["Kopia CLI Bridge (Block-Delta App Snapshots)"]:::adapterNode
+        RCLONE["rclone rcd (127.0.0.1:0, 256-bit RC Auth, DPAPI)"]:::adapterNode
     end
 
-    subgraph Targets["External Devices & Cloud Targets"]
-        PHONE["Android Phone (LocalSend / Syncthing LAN / ADB)"]:::targetNode
-        EXE_CLIENTS["Custom Windows .EXE Apps"]:::targetNode
+    subgraph Targets["Devices, Pentagram Ecosystem & Cloud Targets"]
+        PHONE["Android Phone (Syncthing-Fork / Wireless ADB / Browser)"]:::targetNode
+        EXE_CLIENTS["Custom .EXE Apps & RAG Manager (:27130)"]:::targetNode
         YT_CLOUD["YouTube Channel (Private Playlists)"]:::targetNode
         GDRIVE["Google Drive Remotes (Changes.list + bisync)"]:::targetNode
-        MEGA["Mega.nz Remotes (hasher Overlay + Append Tiers)"]:::targetNode
+        MEGA["Mega.nz Remotes (hasher + Append/Archive)"]:::targetNode
     end
 
-    UI <-->|Bearer Auth + <=5Hz SSE| AUTH
+    UI <-->|Bearer + <=5Hz SSE| AUTH
     EXE_CLIENTS <-->|HTTP POST :59432 + Bearer| AUTH
     AUTH --> BACKPLANE
     BACKPLANE <--> SQL
     BACKPLANE --> RULE_ENG
+    BACKPLANE -->|Large App Folders| KOPIA
+    KOPIA --> RCLONE
 
-    PHONE <-->|HTTPS TLS + PIN :53317| LAN_P2P
-    PHONE <-->|USB / Wi-Fi ADB| ADB
-    LAN_P2P --> INGEST
+    PHONE <-->|LAN TCP/QUIC (QR Pair)| ST
+    PHONE <-->|HTTPS TLS + PIN :53317| LAN_QR
+    PHONE <-->|Wireless QR / USB ADB| ADB
+    ST --> INGEST
+    LAN_QR --> INGEST
     ADB --> INGEST
     INGEST --> SQL
     INGEST --> RULE_ENG
+    INGEST -.->|Obsidian/GaussBoard POST :27130| EXE_CLIENTS
 
     RULE_ENG -->|Videos| YT_CLIENT
     RULE_ENG -->|Pooled Cloud Files| RCLONE
@@ -61,48 +68,49 @@ flowchart TB
     RCLONE <-->|hasher + Pool Crypto| MEGA
 
     subgraph Legend["Legend (Color Guide)"]
-        L1["Blue = TypeScript UI & UX Layer"]:::uiNode
-        L2["Teal = Core Daemon, SQLite & Routing"]:::coreNode
+        L1["Blue = TypeScript Browser UI (Material 3)"]:::uiNode
+        L2["Teal = Go Core Daemon, SQLite & Routing"]:::coreNode
         L3["Amber = Security Guards & Opt-In TLS Boundary"]:::secNode
-        L4["Purple = Isolated Process & Cloud Adapters"]:::adapterNode
-        L5["Slate = External Devices & Cloud Destinations"]:::targetNode
+        L4["Purple = Isolated OSS & Cloud Adapters"]:::adapterNode
+        L5["Slate = Devices, Pentagram & Cloud Targets"]:::targetNode
     end
 ```
 
-* **How It Connects (Plain English):** All UI traffic and local `.exe` sync requests pass through the authenticated `127.0.0.1:59432` guard before touching SQLite or routing rules. Phone transfers over opt-in Wi-Fi P2P (`:53317`) or ADB merge into one SHA-256 deduplication pipeline, while `rclone rcd` and YouTube run as isolated worker adapters supervised by Windows Job Objects.
+* **How It Connects (Plain English):** A single Go daemon (`cloud-managerd.exe`) serves the TypeScript Material 3 UI and authenticated `127.0.0.1:59432` backplane + `/mcp`. Phone transfers via unmodified upstream Syncthing (LAN-Only), Wireless/USB ADB, or the opt-in Browser QR Drop-Zone (`:53317`) converge into one SHA-256 ingestion pipeline that updates SQLite, triggers `RAG Manager :27130` for Obsidian/GaussBoard changes, and routes to Rclone, Kopia, or YouTube.
 
 ---
 
-## 2. Tech Stack & AI-Friendly Language Policy
+## 2. Locked Tech Stack & OSS Reuse
 
-* **Custom-Written Code Policy:** Custom code is restricted strictly to **TypeScript/JavaScript, Go, or Python** so AI coding agents can maintain, refactor, and verify every layer cleanly. Reused open-source binaries and libraries may use any language.
+* **AI-Friendly Language Policy:** Custom code is strictly **Go** (daemon, adapters, CLI/MCP) and **TypeScript** (UI). Battle-tested reused binaries/libraries (`Rclone`, `Syncthing`, `Kopia`, `ADB`, `SQLite 3`) run as supervised external tools.
 
-| Layer | Planned Stack / OSS Reuse | Plain-English Rationale |
+| Layer | Locked Implementation (`[PLANNED]`) | Plain-English Rationale |
 | :--- | :--- | :--- |
-| **Core Daemon (`[PLANNED]`)** | **Go (`cloud-managerd.exe`)** or **Python 3.12+ (`uv`, FastAPI)** *(pending stack lock)* | Single-language clarity, strong HTTP/SQLite/process tooling, zero Rust borrow-checker friction. |
-| **Frontend UI (`[PLANNED]`)** | **TypeScript + Vite + `TanStack Virtual` + `Lucide`** | 60 FPS virtual scrolling, strict typing, Light/Dark/System WCAG AA tokens, offline-safe bundles. |
-| **Local Catalog & Queue** | **SQLite 3** (`WAL`, `busy_timeout = 5000`, `FTS5`, `user_version`) | Sub-5 ms offline search, durable job queue, remote change cursors, and rolling `.bak` safety. |
-| **Multi-Cloud Transport** | **Rclone Core** (`>= v1.66`, `rcd`, `union`, `hasher`) *(Go OSS)* | Battle-tested Mega encryption, Google Drive `Changes.list`, and pool balancing. |
-| **Phone Sync (Wi-Fi + ADB)** | **LocalSend v2 Protocol** (`:53317`) + optional **Syncthing LAN-Only** + **ADB** | Zero custom Android app code required; works over home Wi-Fi with USB ADB fallback. |
-| **Video Archive** | **YouTube Data API v3** (official Go/Python SDK or `porjo/youtubeuploader`) | Enforces `privacyStatus = "private"`, playlist routing, and resumable chunk recovery. |
+| **Core Daemon & CLI** | **Go** (`cloud-managerd.exe` + `cloud-manager.exe --json` + Tray) | Static ~15 MB `.exe`, ~25 MB idle RAM, goroutines for TLS/chunked uploads, native Windows Job Objects. |
+| **Frontend UI** | **TypeScript + Vite + `TanStack Virtual` + `Lucide`** | Local Browser UI (portable Electron `.exe` deferred post-v1), Material 3 Tonal Light/Dark/System, WCAG AA. |
+| **Local Catalog & Queue** | **SQLite 3** (`WAL`, `busy_timeout = 5000`, `FTS5`, `user_version`) | Sub-5 ms offline search, durable job state machine, `remote_cursors`, `tombstones`, and quota ledger. |
+| **Multi-Cloud Pool** | **Rclone Core** (`>= v1.66`, `rcd`, `union`, `hasher`) *(Go OSS)* | Google Drive two-way `bisync` (`Changes.list`) + Mega Append/Archive tiers (`hasher`, zero `ModTime` loops). |
+| **Phone Two-Way Delta** | **Syncthing** (`MPL-2.0` LAN-Only REST API) + **Wireless/USB ADB** + **QR Drop-Zone** (`:53317`) | Solves multicast drops, supports click-to-sync two-way folder deltas (`Obsidian`, `GaussBoard`, `DCIM`, `PDFs`, `Music`). |
+| **App State Snapshots** | **SQLite `VACUUM INTO`** + **Kopia CLI** (`Apache-2.0`) | Safe live DB snapshots plus FastCDC block-delta deduplication for large custom `.exe` app directories. |
+| **Video Archive** | **Official Go YouTube Data API v3 SDK** (~200 LOC) | Enforces `private` visibility, saves resumable `Location` URIs, enforces `9,600 / 10,000` PT quota cap. |
 
 ---
 
 ## 3. Core Subsystems & Security Boundaries (`[PLANNED]`)
 
 ### [SUBSYSTEM: Security-Boundaries-And-Hardening] | Aliases: security boundaries, loopback auth, rclone encryption, job object, data integrity
-> **1-Line Summary:** Enforces fail-closed loopback authentication, encrypted secrets, TLS LAN isolation, argv-only subprocesses, and atomic SQLite/file integrity across every boundary.
+> **1-Line Summary:** Enforces fail-closed loopback authentication, DPAPI secrets, TLS LAN isolation, argv-only subprocesses, and atomic SQLite/file integrity across every boundary.
 
-* **Loopback Backplane (`127.0.0.1:59432`):** Binds strictly to `127.0.0.1` (fail closed if overridden); requires `Authorization: Bearer <token>` (or `X-Local-Token`) from `%USERPROFILE%\.local\share\ecosystem-secrets.json` (`tokens.cloudManager`); rejects any `Origin` header with `403 Forbidden`; enforces `Host` matching `^127\.0\.0\.1:59432$|^localhost:59432$`; validates `?app=` against `^[a-z0-9][a-z0-9_-]{0,63}$`.
-* **Path & Subprocess Isolation:** Executes all external binaries (`rclone`, `adb`, `syncthing`) strictly via argv arrays (`shell=False` / `exec.Command` / `execFile`). Canonicalizes incoming filenames and rejects `..`, drive letters, UNC paths, symlinks/junctions, null bytes, and NTFS reserved names (`CON`, `PRN`, `AUX`, `NUL`, `COM1`–`COM9`, `LPT1`–`LPT9`).
-* **Rclone & Secret Protection:** Encrypts `rclone.conf` using a master key protected by Windows DPAPI and injected via `RCLONE_CONFIG_PASS` environment variable (never CLI argv or plaintext disk); binds `rclone rcd` to `127.0.0.1:0` with ephemeral 256-bit `--rc-user`/`--rc-pass` and `--rc-allow-origin ""`; attaches child processes to a Windows **Job Object** (`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`).
-* **Log & Telemetry Redaction:** Passes all JSONL logs and UI SSE events (`<= 5 Hz`) through middleware stripping `Authorization`, `X-Local-Token`, OAuth tokens, passwords, and `RCLONE_*` fields.
-* **Data Integrity & Backups:** Gates schema changes behind `PRAGMA user_version` migrations with pre-migration `.bak` copies (retaining last 5); writes config files atomically (`temp -> fsync -> rename`, UTF-8 without BOM); captures live `.exe` app SQLite DBs via `VACUUM INTO`; preserves conflicting edits via `(sha256, parent_revision)` as `<name>.conflict-<host>-<utc>.<ext>`.
+* **Loopback Backplane (`127.0.0.1:59432`):** Binds strictly to `127.0.0.1` (fail closed); requires `Authorization: Bearer <token>` (or `X-Local-Token`) from `%USERPROFILE%\.local\share\ecosystem-secrets.json` (`tokens.cloudManager`); rejects any browser `Origin` header (`403`); validates `Host` (`127.0.0.1:59432` / `localhost:59432`); validates `?app=` (`^[a-z0-9][a-z0-9_-]{0,63}$`).
+* **Path & Subprocess Isolation:** Invokes `rclone`, `syncthing`, `adb`, and `kopia` via Go `exec.Command` argv arrays (never shells). Canonicalizes incoming filenames and rejects `..`, drive prefixes, UNC paths, junctions/symlinks, null bytes, and NTFS reserved names (`CON`, `PRN`, `AUX`, `NUL`, `COM1`–`COM9`, `LPT1`–`LPT9`).
+* **Daemon Supervision & Secrets:** Unlocks `rclone.conf` via Windows DPAPI + `RCLONE_CONFIG_PASS` env var (never CLI argv); spawns `rclone rcd` and `syncthing` on `127.0.0.1:0` with ephemeral 256-bit API auth; binds all child processes to a Windows **Job Object** (`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`).
+* **Log & Telemetry Redaction:** Strips `Authorization`, `X-Local-Token`, OAuth tokens, passwords, and `RCLONE_*` fields from JSONL logs and `<= 5 Hz` SSE streams.
+* **Data Integrity & Backups:** Runs numbered `PRAGMA user_version` migrations with pre-migration `.bak` snapshots (last 5 kept); atomic config saves (`temp -> fsync -> rename`, UTF-8 no BOM); `VACUUM INTO` for live app SQLite DBs; `(sha256, parent_revision)` conflict files (`<name>.conflict-<host>-<utc>.<ext>`).
 
 ---
 
-### [SUBSYSTEM: Unified-Phone-Ingestion-WiFi-And-ADB] | Aliases: wifi phone sync, lan p2p, adb sync, mediastore compare, sha256 dedup
-> **1-Line Summary:** Combines opt-in Same-Router Wi-Fi P2P (`:53317`) and ADB MediaStore queries into one streaming SHA-256 deduplication and filing pipeline.
+### [SUBSYSTEM: Unified-Phone-Ingestion-WiFi-And-ADB] | Aliases: wifi phone sync, syncthing lan, wireless adb, browser qr dropzone, rag webhook
+> **1-Line Summary:** Unifies unmodified Syncthing LAN-Only, Wireless/USB ADB QR pairing, and an opt-in Browser QR Drop-Zone into one two-way SHA-256 pipeline with `RAG Manager` re-indexing.
 
 ```mermaid
 flowchart LR
@@ -111,33 +119,34 @@ flowchart LR
     classDef pipeNode fill:#0f766e,stroke:#115e59,color:#ffffff
     classDef destNode fill:#334155,stroke:#0f172a,color:#ffffff
 
-    WIFI_SRC["Phone over Home Wi-Fi (LocalSend v2 / Syncthing LAN)"]:::wifiNode
-    TLS_GUARD["TLS :53317 + PIN/Cert Pin + Filename Jail"]:::wifiNode
-    ADB_SRC["Phone over USB/Wi-Fi ADB"]:::adbNode
-    ADB_QUERY["MediaStore Query (images+video, UTC sec, CRLF Trim)"]:::adbNode
-    SHA_PIPE["Streaming SHA-256 Check + Free-Space Guard"]:::pipeNode
-    SQL_DEDUP[("SQLite Catalog Dedup + YYYY/MM Move")]:::pipeNode
+    ST_SRC["Syncthing LAN-Only (QR Pair + REST Pause/Sync)"]:::wifiNode
+    QR_SRC["Browser QR Drop-Zone (HTTPS :53317 + 6-Digit PIN)"]:::wifiNode
+    ADB_SRC["Wireless QR / USB ADB (MediaStore + Folder Diff)"]:::adbNode
+    SHA_PIPE["Streaming SHA-256 + Disk Check (free > 1.2x + 2GiB)"]:::pipeNode
+    SQL_DEDUP[("SQLite Catalog + Two-Way Conflict Check")]:::pipeNode
     POOL_Q["Smart Router & Rclone Queue"]:::destNode
+    RAG_HOOK["RAG Manager :27130 (/v1/ingest/event)"]:::destNode
 
-    WIFI_SRC -->|Opt-In ON| TLS_GUARD --> SHA_PIPE
-    ADB_SRC --> ADB_QUERY -->|New Items Only| SHA_PIPE
+    ST_SRC <-->|Two-Way Folder Delta| SHA_PIPE
+    QR_SRC <-->|Ad-Hoc Bidirectional| SHA_PIPE
+    ADB_SRC <-->|Media + Folder Pull/Push| SHA_PIPE
     SHA_PIPE --> SQL_DEDUP --> POOL_Q
+    SQL_DEDUP -.->|Obsidian / GaussBoard| RAG_HOOK
 
     subgraph Legend["Legend (Color Guide)"]
-        LW["Blue = Same-Router Wi-Fi P2P Path"]:::wifiNode
-        LA["Purple = ADB MediaStore Delta Path"]:::adbNode
-        LP["Teal = Canonical SHA-256 & Disk Safety Pipeline"]:::pipeNode
-        LD["Slate = Smart Router & Cloud Upload Queue"]:::destNode
+        LW["Blue = Wi-Fi Delta & QR Transfers"]:::wifiNode
+        LA["Purple = Wireless QR & USB ADB Path"]:::adbNode
+        LP["Teal = Canonical SHA-256 & Conflict Pipeline"]:::pipeNode
+        LD["Slate = Cloud Dispatch & RAG Live Re-Index"]:::destNode
     end
 ```
 
-* **How It Works (Plain English):** Both Wi-Fi transfers (`:53317` LocalSend v2 HTTPS/PIN or optional Syncthing LAN-only folder) and ADB pulls (`images/media` + `video/media` with UTC seconds normalization) pass free-disk pre-flight checks (`free > incoming * 1.2 + 2 GiB`) and streaming SHA-256 deduplication before routing to cloud storage.
-* **Status:** `[PLANNED]` — `staging/` path configurable to secondary drives (`D:`/`E:`) with failed-artifact TTL cleanup.
+* **How It Works (Plain English):** Syncthing (LAN-Only, Global Discovery/relays disabled) handles true two-way block-level folder deltas via QR pairing; Wireless/USB ADB inspects phone MediaStore (`images/media`, `video/media`, UTC seconds, `\r\r\n` trimmed) and user-selected folders; the Browser QR Drop-Zone provides zero-app two-way transfers over `:53317`. Changes in `Obsidian` or `GaussBoard` notify `RAG Manager :27130`.
 
 ---
 
 ### [SUBSYSTEM: YouTube-Resumable-Video-Pipeline] | Aliases: youtube uploader, private video sync, quota ledger, video chunker
-> **1-Line Summary:** Streams 16 MB video chunks to private YouTube playlists with persistent resumable URIs and daily PT quota accounting.
+> **1-Line Summary:** Custom ~200 LOC Go uploader streaming 16 MB chunks to private YouTube playlists with persisted session URIs and PT quota limits.
 
 ```mermaid
 flowchart LR
@@ -161,35 +170,35 @@ flowchart LR
     end
 ```
 
-* **How It Works (Plain English):** Checks `youtube_quota_ledger` (1,650 units per video + playlist insert) before opening a `private` resumable session, saves the `Location` URI in SQLite so crashes resume without re-burning 1,600 units, and skips polling `videos.list` loops.
+* **How It Works (Plain English):** Enforces `9,600` daily PT quota (1,650 units/video), stores resumable `Location` URIs in SQLite for crash recovery, and skips `videos.list` polling loops.
 
 ---
 
-### [SUBSYSTEM: Localhost-App-Backplane] | Aliases: app sync api, custom exe persistence, port 59432, vacuum into
-> **1-Line Summary:** Authenticated `127.0.0.1:59432` HTTP + `/mcp` server accepting `VACUUM INTO` app snapshots and queueing cloud sync offline-first.
+### [SUBSYSTEM: Localhost-App-Backplane] | Aliases: app sync api, custom exe persistence, port 59432, kopia bridge
+> **1-Line Summary:** Authenticated `127.0.0.1:59432` HTTP + `/mcp` server accepting `VACUUM INTO` DB snapshots, Kopia app-folder deltas, and `--json` CLI invocations.
 
-* **How It Works (Plain English):** Custom Windows `.exe` apps authenticate with Bearer tokens from `ecosystem-secrets.json`, export clean SQLite snapshots via `VACUUM INTO` (avoiding `-wal`/`-shm` tears), and post to `127.0.0.1:59432/api/v1/sync?app=<slug>`. State saves immediately to local storage/SQLite offline and syncs to Google Drive asynchronously with `Retry-After` / exponential backoff.
+* **How It Works (Plain English):** Serves custom `.exe` apps and AI agents via `127.0.0.1:59432`, `/mcp`, `cloud-manager://` URI, and `%USERPROFILE%\.local\bin\cloud-manager.exe --json`. Single-file DBs use `VACUUM INTO`; large multi-file `.exe` app directories snapshot through Kopia before cloud dispatch.
 
 ---
 
 ### [SUBSYSTEM: Rclone-Pool-And-Catalog-Reconciliation] | Aliases: rclone hasher, gdrive changes, mega append, sqlite cursors
-> **1-Line Summary:** Reconciles out-of-band cloud changes using Google Drive `changes.list` tokens and Mega `hasher` recursive tree diffs into SQLite tombstones.
+> **1-Line Summary:** Reconciles Google Drive `changes.list` tokens and Mega `hasher` tree diffs into SQLite tombstones with `509` backoff and Duplicate Inspector support.
 
-* **How It Works (Plain English):** Tracks `remote_cursors (remote_id, cursor_token, last_reconciled_at)` and `tombstones` in SQLite. Google Drive syncs via `changes.list` page tokens; Mega remotes run under Rclone `hasher` with append/archive semantics and `509` bandwidth backoff so missing native `ModTime` never causes re-upload loops.
+* **How It Works (Plain English):** Tracks `remote_cursors` and `tombstones` in SQLite. Google Drive runs two-way `bisync`; Mega uses `hasher` append/archive tiers with `509` backoff and surfaces remote deletions in a user-reviewable queue while powering the Cross-Account Duplicate Inspector.
 
 ---
 
 ## 4. Verification & CI Pipeline (`[PLANNED]`)
 
 ### [FLOW: Automated-Verification-And-CI-Pipeline] | Aliases: ci workflow, security regression, test suite, portable build
-> **1-Line Summary:** Defines GitHub Actions CI checks, security regression gates, and tag-triggered portable `.exe` builds once the core stack is locked.
+> **1-Line Summary:** Defines GitHub Actions Go + TypeScript CI verification, security regression gates, and tag-triggered portable Windows `.exe` builds.
 
-* **Pipeline Target:** `.github/workflows/ci.yml` (bootstrapped from `agent-templates/templates/ci.yml` after stack lock).
-* **Required Gates:** Static lint/type checks (`tsc` + `go vet` or `ruff`/`mypy`), mocked adapter unit/integration suites (Rclone JSON-RPC, ADB `\r\r\n` fixtures, YouTube quota/resumable chunks, LocalSend LAN loopback), and security regression checks (`401` missing auth, `403` `Origin`, bad `Host`, path traversal, secret redaction).
-* **Release Packaging:** Tag-triggered (`vX.Y.Z`) GitHub Actions release producing a Windows 10/11 x64 portable `.exe` (`CloudManager.exe`).
+* **Pipeline Target:** `.github/workflows/ci.yml` (bootstrapped on Phase 1 start from `agent-templates/templates/ci.yml`).
+* **Locked Commands:** `go vet ./...`, `go test -race ./...`, `npm run lint`, `npx tsc --noEmit`, `npm test`, and `GOOS=windows GOARCH=amd64 go build` (plus tag-triggered `vX.Y.Z` portable `CloudManager.exe` release).
+* **Security & Contract Regressions:** Automated tests assert `401` missing auth, `403` `Origin`, mismatched `Host`, `..`/NTFS path rejection, secret redaction, `\r\r\n` ADB fixtures, `--json` exit codes `0/1/2/3`, and UTF-8 without BOM.
 
 ---
 
 ## 5. Extension Recipes (`[PLANNED]`)
-1. **Add a Cloud Provider:** Add an Rclone remote capability descriptor (hash support, `ModTime` reliability, rate-limit policy) in the Rclone adapter config + UI quota meter component.
-2. **Add a Routing Predicate:** Extend the priority-ordered rule matcher schema, dry-run simulator test suite, and Rule Editor form controls.
+1. **Add a Cloud Provider:** Register Rclone remote capabilities (`ModTime`, hash type, rate limits) in the Go Rclone adapter and UI quota meter.
+2. **Add a Routing Predicate:** Extend the Go rule matcher, add dry-run simulator unit tests, and wire the TypeScript Rule Editor field.
