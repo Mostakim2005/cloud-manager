@@ -221,13 +221,14 @@ func runRoute(args []string, paths config.Paths, settings config.Settings, stdin
 		origin := fs.String("origin", "pc", "")
 		size := fs.Int64("size", 1024*1024, "")
 		_ = fs.Bool("json", false, "")
-		if err := fs.Parse(stripGlobalFlags(args[1:])); err != nil || fs.NArg() == 0 {
+		pos, err := parseFlexibleFlags(fs, stripGlobalFlags(args[1:]), map[string]bool{"origin": true, "size": true})
+		if err != nil || len(pos) == 0 {
 			emitError(stderr, stdout, asJSON, ExitInvalidArg, "usage: route test <filename> [--origin pc] [--size N] [--json]")
 			return ExitInvalidArg
 		}
 		rules, _ := store.ListRoutingRules()
 		accounts, _ := store.ListAccounts()
-		res := routing.Evaluate(rules, accounts, routing.NewQuotaReservationTracker(), settings, fs.Arg(0), *origin, *size, time.Now())
+		res := routing.Evaluate(rules, accounts, routing.NewQuotaReservationTracker(), settings, pos[0], *origin, *size, time.Now())
 		emitJSON(stdout, res)
 		return ExitOK
 	case "add":
@@ -235,7 +236,7 @@ func runRoute(args []string, paths config.Paths, settings config.Settings, stdin
 		fs.SetOutput(io.Discard)
 		inFile := fs.String("input-file", "", "")
 		_ = fs.Bool("json", false, "")
-		if err := fs.Parse(stripGlobalFlags(args[1:])); err != nil {
+		if _, err := parseFlexibleFlags(fs, stripGlobalFlags(args[1:]), map[string]bool{"input-file": true}); err != nil {
 			emitError(stderr, stdout, asJSON, ExitInvalidArg, "invalid route add flags")
 			return ExitInvalidArg
 		}
@@ -293,7 +294,7 @@ func runSync(args []string, paths config.Paths, settings config.Settings, secret
 		inFile := fs.String("input-file", "", "")
 		dry := fs.Bool("dry-run", false, "")
 		_ = fs.Bool("json", false, "")
-		if err := fs.Parse(stripGlobalFlags(args[1:])); err != nil || *appSlug == "" {
+		if _, err := parseFlexibleFlags(fs, stripGlobalFlags(args[1:]), map[string]bool{"app": true, "file": true, "sqlite-db": true, "kopia-dir": true, "input-file": true}); err != nil || *appSlug == "" {
 			emitError(stderr, stdout, asJSON, ExitInvalidArg, "usage: sync app --app <slug> [--file path | --sqlite-db path | --kopia-dir dir | --input-file json] [--dry-run] [--json]")
 			return ExitInvalidArg
 		}
@@ -385,20 +386,21 @@ func runYouTube(args []string, paths config.Paths, settings config.Settings, sec
 		playlist := fs.String("playlist", settings.YouTubePlaylistID, "")
 		dry := fs.Bool("dry-run", false, "")
 		_ = fs.Bool("json", false, "")
-		if err := fs.Parse(stripGlobalFlags(args[1:])); err != nil || fs.NArg() == 0 {
+		pos, err := parseFlexibleFlags(fs, stripGlobalFlags(args[1:]), map[string]bool{"playlist": true})
+		if err != nil || len(pos) == 0 {
 			emitError(stderr, stdout, asJSON, ExitInvalidArg, "usage: youtube queue <file> [--playlist id] [--dry-run] [--json]")
 			return ExitInvalidArg
 		}
 		if *dry {
 			emitJSON(stdout, map[string]any{
 				"dryRun":        true,
-				"file":          fs.Arg(0),
+				"file":          pos[0],
 				"playlist":      *playlist,
 				"privacyStatus": "private",
 			})
 			return ExitOK
 		}
-		body, _ := json.Marshal(map[string]any{"sourcePath": fs.Arg(0), "playlistId": *playlist, "dryRun": false})
+		body, _ := json.Marshal(map[string]any{"sourcePath": pos[0], "playlistId": *playlist, "dryRun": false})
 		resp, respBody, code := callDaemon(http.MethodPost, "/api/v1/youtube/queue", body, secrets)
 		if code != ExitOK {
 			emitError(stderr, stdout, asJSON, code, string(respBody))
@@ -473,6 +475,30 @@ func stripGlobalFlags(args []string) []string {
 		out = append(out, args[i])
 	}
 	return out
+}
+
+// parseFlexibleFlags allows positional arguments to appear before or after flags.
+func parseFlexibleFlags(fs *flag.FlagSet, args []string, valueFlags map[string]bool) ([]string, error) {
+	var flagArgs []string
+	var posArgs []string
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if strings.HasPrefix(a, "-") && a != "-" {
+			flagArgs = append(flagArgs, a)
+			name := strings.TrimLeft(a, "-")
+			if !strings.Contains(name, "=") && valueFlags[name] && i+1 < len(args) {
+				i++
+				flagArgs = append(flagArgs, args[i])
+			}
+			continue
+		}
+		posArgs = append(posArgs, a)
+	}
+	if err := fs.Parse(flagArgs); err != nil {
+		return nil, err
+	}
+	posArgs = append(posArgs, fs.Args()...)
+	return posArgs, nil
 }
 
 func containsFlag(args []string, target string) bool {

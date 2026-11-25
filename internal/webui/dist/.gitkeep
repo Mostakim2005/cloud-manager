@@ -1,0 +1,2 @@
+// Placeholder so go:embed dist/* compiles before Vite build populates dist/.
+Keep this directory tracked with a non-empty placeholder file.

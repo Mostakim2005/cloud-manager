@@ -1,8 +1,9 @@
 # Node / TypeScript
 node_modules/
 web/node_modules/
-dist/
-build/
+/dist/
+/web/dist/
+/build/
 release-assets/
 .vite/
 .env
