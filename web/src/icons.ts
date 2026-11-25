@@ -75,10 +75,10 @@ const ICONS: Record<IconName, IconNode> = {
 };
 
 export function iconEl(name: IconName, size = 16): SVGElement {
-  return createElement(ICONS[name], {
-    width: size,
-    height: size,
-    'stroke-width': '1.75',
-    'aria-hidden': 'true',
-  });
+  const svg = createElement(ICONS[name]);
+  svg.setAttribute('width', String(size));
+  svg.setAttribute('height', String(size));
+  svg.setAttribute('stroke-width', '1.75');
+  svg.setAttribute('aria-hidden', 'true');
+  return svg;
 }
