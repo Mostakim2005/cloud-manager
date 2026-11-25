@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
+  <script data-cm-fouc>
+    try {
+      const saved = localStorage.getItem('cm-color-scheme');
+      if (saved === 'light' || saved === 'dark') {
+        document.querySelector('meta[name="color-scheme"]').setAttribute('content', saved);
+      }
+    } catch {}
+  </script>
+  <title>Cloud Manager — Multi-Cloud &amp; Device Hub</title>
+</head>
+<body>
+  <a href="#main-content" class="skip-link visually-hidden">Skip to main content</a>
+
+  <div class="app-shell">
+    <aside id="sidebar-drawer" class="sidebar" aria-label="Primary Sidebar">
+      <div class="brand-row">
+        <div class="brand-title">
+          <span class="brand-mark" id="brand-icon"></span>
+          <span>Cloud Manager</span>
+        </div>
+        <span id="daemon-pill" class="status-badge status-info" title="Loopback daemon connection">
+          <span class="badge-icon" id="daemon-pill-icon"></span>
+          <span id="daemon-pill-text">Connecting</span>
+        </span>
+      </div>
+
+      <nav aria-label="Primary" class="nav-list" id="primary-nav"></nav>
+
+      <section class="quota-section" aria-labelledby="quota-heading">
+        <div class="section-header">
+          <h2 id="quota-heading">Storage Pools</h2>
+          <button type="button" class="btn-ghost btn-sm" id="btn-refresh-status" aria-label="Refresh pool quotas">Refresh</button>
+        </div>
+        <div id="sidebar-accounts" class="account-stack"></div>
+      </section>
+    </aside>
+
+    <div class="main-column">
+      <header class="topbar">
+        <div class="topbar-left">
+          <button type="button" class="btn-icon mobile-only" id="btn-drawer-toggle" aria-label="Toggle navigation drawer" aria-expanded="false" aria-controls="sidebar-drawer"></button>
+          <div class="telemetry-strip" aria-label="Live telemetry">
+            <span class="status-badge status-success" id="throughput-pill">
+              <span class="badge-icon" id="throughput-icon"></span>
+              <span id="throughput-text">0.0 MB/s</span>
+            </span>
+            <span class="telemetry-stat" id="queue-stat">0 active jobs</span>
+            <span class="telemetry-stat" id="catalog-stat">0 indexed</span>
+          </div>
+        </div>
+
+        <div class="topbar-actions">
+          <button type="button" class="btn-secondary btn-sm" id="btn-density-toggle" aria-pressed="false" title="Toggle row density (Comfortable / Compact)">
+            Density: <span id="density-label">Comfortable</span>
+          </button>
+          <button type="button" class="btn-secondary btn-sm" id="btn-open-palette" title="Command Quick-Picker (Ctrl+K)">
+            Commands <kbd>Ctrl+K</kbd>
+          </button>
+          <button type="button" class="btn-icon" id="btn-open-shortcuts" aria-label="Keyboard shortcuts (?)" title="Keyboard shortcuts (?)"></button>
+        </div>
+      </header>
+
+      <main id="main-content" class="view-container" tabindex="-1">
+        <h1 id="view-heading" class="view-heading">Virtual File Explorer</h1>
+        <div id="view-root" class="view-root"></div>
+      </main>
+    </div>
+  </div>
+
+  <!-- Centralized Live Regions (never mounted conditionally with text) -->
+  <div id="toast-region" class="toast-region" role="status" aria-live="polite"></div>
+  <div id="alert-region" class="visually-hidden" role="alert"></div>
+
+  <!-- Quick-Look Lightbox Dialog (Space) -->
+  <dialog id="quick-look-dialog" class="cm-dialog cm-dialog-lg" closedby="any" aria-labelledby="ql-title">
+    <div class="dialog-header">
+      <h1 id="ql-title">File Quick-Look</h1>
+      <form method="dialog"><button type="submit" value="close" class="btn-secondary btn-sm" aria-label="Close Quick-Look">Close</button></form>
+    </div>
+    <div id="ql-body" class="dialog-body"></div>
+  </dialog>
+
+  <!-- Fuzzy Command Quick-Picker Dialog (Ctrl+K) -->
+  <dialog id="command-dialog" class="cm-dialog cm-dialog-md" closedby="any" aria-labelledby="cmd-title">
+    <div class="dialog-header">
+      <h1 id="cmd-title">Quick Command Picker</h1>
+      <form method="dialog"><button type="submit" value="close" class="btn-secondary btn-sm">Esc</button></form>
+    </div>
+    <div class="dialog-body">
+      <label for="cmd-search" class="visually-hidden">Filter commands</label>
+      <input id="cmd-search" type="search" class="input" placeholder="Type a command or view name..." autofocus>
+      <ul id="cmd-list" class="cmd-list" role="listbox" aria-label="Matching commands"></ul>
+    </div>
+  </dialog>
+
+  <!-- Keyboard Shortcut Cheat-Sheet (?) -->
+  <dialog id="shortcuts-dialog" class="cm-dialog cm-dialog-md" closedby="any" aria-labelledby="sc-title">
+    <div class="dialog-header">
+      <h1 id="sc-title">Keyboard Shortcuts</h1>
+      <form method="dialog"><button type="submit" value="close" class="btn-secondary btn-sm" autofocus>Close</button></form>
+    </div>
+    <div class="dialog-body">
+      <table class="shortcuts-table">
+        <caption>Global &amp; Explorer Shortcuts</caption>
+        <thead><tr><th scope="col">Shortcut</th><th scope="col">Action</th></tr></thead>
+        <tbody>
+          <tr><td><kbd>Ctrl+K</kbd></td><td>Open command &amp; view quick-picker</td></tr>
+          <tr><td><kbd>?</kbd></td><td>Show keyboard shortcut cheat-sheet</td></tr>
+          <tr><td><kbd>/</kbd> or <kbd>Ctrl+F</kbd></td><td>Focus in-view search filter</td></tr>
+          <tr><td><kbd>Space</kbd></td><td>Quick-Look preview selected catalog item</td></tr>
+          <tr><td><kbd>Ctrl+1</kbd> … <kbd>Ctrl+6</kbd></td><td>Switch primary views</td></tr>
+          <tr><td><kbd>Esc</kbd></td><td>Dismiss dialog or overlay</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </dialog>
+
+  <!-- Destructive Confirmation Dialog (Cancel autofocused) -->
+  <dialog id="confirm-dialog" class="cm-dialog cm-dialog-sm" aria-labelledby="confirm-title">
+    <h1 id="confirm-title" class="dialog-single-title">Confirm Action</h1>
+    <p id="confirm-message" class="dialog-desc"></p>
+    <form method="dialog" class="dialog-footer">
+      <button type="submit" value="cancel" class="btn-secondary" autofocus>Cancel</button>
+      <button type="submit" value="confirm" id="confirm-ok-btn" class="btn-danger">Confirm</button>
+    </form>
+  </dialog>
+
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

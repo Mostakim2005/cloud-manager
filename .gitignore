@@ -1,11 +1,17 @@
 # Node / TypeScript
 node_modules/
+web/node_modules/
 dist/
 build/
+release-assets/
 .vite/
 .env
 .env.*
 !.env.example
+
+# Embedded UI build outputs (populated during CI / release build)
+internal/webui/dist/*
+!internal/webui/dist/.gitkeep
 
 # Go
 bin/
@@ -13,6 +19,10 @@ bin/
 *.dll
 *.test
 coverage.out
+
+# CI temporary logs
+.ci-logs/
+.ci-report/
 
 # Python
 .venv/
@@ -44,5 +54,6 @@ Thumbs.db
 staging/
 rclone.conf
 ecosystem-secrets.json
+*.dpapi
 *.key
 *.pem

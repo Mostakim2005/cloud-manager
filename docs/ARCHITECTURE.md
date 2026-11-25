@@ -1,5 +1,5 @@
 # System Architecture (`ARCHITECTURE.md`)
-> **1-Line Summary:** Plain-English architectural blueprint of Cloud Manager (`[PLANNED]`, locked Go + TypeScript stack), security boundaries, subsystem data flows, and CI pipeline.
+> **1-Line Summary:** Living architectural blueprint of Cloud Manager (`[IMPLEMENTED]` Go + TypeScript stack), security boundaries, subsystem data flows, and GitHub CI pipeline.
 
 ## 1. High-Level Visual System Map
 
@@ -11,26 +11,26 @@ flowchart TB
     classDef adapterNode fill:#6d28d9,stroke:#4c1d95,color:#ffffff
     classDef targetNode fill:#334155,stroke:#0f172a,color:#ffffff
 
-    subgraph UI["TypeScript Browser UI + Go System Tray (Material 3 Tonal)"]
+    subgraph UI["TypeScript Browser UI (web/) + Go System Tray (internal/tray)"]
         EXP["Virtual Explorer + Quick-Look + Density"]:::uiNode
         RULES_UI["Routing Editor + Dry-Run Bench"]:::uiNode
         MEDIA_UI["Phone Sync (Syncthing / ADB / QR)"]:::uiNode
         YT_UI["YouTube Private Pipeline Monitor"]:::uiNode
     end
 
-    subgraph Core["Go Core Daemon (cloud-managerd.exe + cloud-manager.exe --json)"]
+    subgraph Core["Go Core Daemon (cmd/cloud-managerd + cmd/cloud-manager)"]
         AUTH["Security Guard (Bearer, Origin 403, Host, Path Jail)"]:::secNode
-        BACKPLANE["Loopback HTTP / MCP (127.0.0.1:59432)"]:::coreNode
+        BACKPLANE["Loopback HTTP / SSE / MCP (127.0.0.1:59432)"]:::coreNode
         SQL[("SQLite WAL + FTS5 (user_version, cursors, jobs)")]:::coreNode
         RULE_ENG["Router, Quota Spillover, Scheduler & Dedup"]:::coreNode
         INGEST["Unified SHA-256 Ingestion + RAG Webhook"]:::coreNode
     end
 
-    subgraph Adapters["Job-Object Supervised Adapters"]
+    subgraph Adapters["Job-Object Supervised Adapters (internal/adapters/)"]
         ST["Upstream Syncthing LAN-Only (REST API)"]:::adapterNode
         LAN_QR["Browser QR Drop-Zone (HTTPS TLS :53317, OFF default)"]:::secNode
         ADB["Wireless QR / USB ADB Worker (Argv-Only)"]:::adapterNode
-        YT_CLIENT["Go YouTube SDK Uploader (~200 LOC + Ledger)"]:::adapterNode
+        YT_CLIENT["Go YouTube SDK Uploader (16 MB Chunks + Ledger)"]:::adapterNode
         KOPIA["Kopia CLI Bridge (Block-Delta App Snapshots)"]:::adapterNode
         RCLONE["rclone rcd (127.0.0.1:0, 256-bit RC Auth, DPAPI)"]:::adapterNode
     end
@@ -76,36 +76,35 @@ flowchart TB
     end
 ```
 
-* **How It Connects (Plain English):** A single Go daemon (`cloud-managerd.exe`) serves the TypeScript Material 3 UI and authenticated `127.0.0.1:59432` backplane + `/mcp`. Phone transfers via unmodified upstream Syncthing (LAN-Only), Wireless/USB ADB, or the opt-in Browser QR Drop-Zone (`:53317`) converge into one SHA-256 ingestion pipeline that updates SQLite, triggers `RAG Manager :27130` for Obsidian/GaussBoard changes, and routes to Rclone, Kopia, or YouTube.
+* **How It Connects (Plain English):** A single Go daemon (`internal/server/server.go` -> `Daemon`) serves the embedded TypeScript Material 3 UI (`web/`, built into `internal/webui/dist`) and authenticated `127.0.0.1:59432` backplane + `/mcp`. Phone transfers via unmodified upstream Syncthing (LAN-Only), Wireless/USB ADB, or the opt-in Browser QR Drop-Zone (`:53317`) converge into one SHA-256 ingestion pipeline (`internal/ingest`) that updates SQLite (`internal/db`), triggers `RAG Manager :27130` for Obsidian/GaussBoard changes, and routes to Rclone, Kopia, or YouTube.
 
 ---
 
-## 2. Locked Tech Stack & OSS Reuse
+## 2. Implemented Tech Stack & OSS Reuse
 
-* **AI-Friendly Language Policy:** Custom code is strictly **Go** (daemon, adapters, CLI/MCP) and **TypeScript** (UI). Battle-tested reused binaries/libraries (`Rclone`, `Syncthing`, `Kopia`, `ADB`, `SQLite 3`) run as supervised external tools.
+* **AI-Friendly Language Policy:** Custom code is strictly **Go** (`cmd/`, `internal/`) and **TypeScript** (`web/`). Battle-tested reused binaries/libraries (`Rclone`, `Syncthing`, `Kopia`, `ADB`, `modernc.org/sqlite`) run safely without CGO bloat.
 
-| Layer | Locked Implementation (`[PLANNED]`) | Plain-English Rationale |
+| Layer | Implementation (`[IMPLEMENTED]`) | Code Anchors |
 | :--- | :--- | :--- |
-| **Core Daemon & CLI** | **Go** (`cloud-managerd.exe` + `cloud-manager.exe --json` + Tray) | Static ~15 MB `.exe`, ~25 MB idle RAM, goroutines for TLS/chunked uploads, native Windows Job Objects. |
-| **Frontend UI** | **TypeScript + Vite + `TanStack Virtual` + `Lucide`** | Local Browser UI (portable Electron `.exe` deferred post-v1), Material 3 Tonal Light/Dark/System, WCAG AA. |
-| **Local Catalog & Queue** | **SQLite 3** (`WAL`, `busy_timeout = 5000`, `FTS5`, `user_version`) | Sub-5 ms offline search, durable job state machine, `remote_cursors`, `tombstones`, and quota ledger. |
-| **Multi-Cloud Pool** | **Rclone Core** (`>= v1.66`, `rcd`, `union`, `hasher`) *(Go OSS)* | Google Drive two-way `bisync` (`Changes.list`) + Mega Append/Archive tiers (`hasher`, zero `ModTime` loops). |
-| **Phone Two-Way Delta** | **Syncthing** (`MPL-2.0` LAN-Only REST API) + **Wireless/USB ADB** + **QR Drop-Zone** (`:53317`) | Solves multicast drops, supports click-to-sync two-way folder deltas (`Obsidian`, `GaussBoard`, `DCIM`, `PDFs`, `Music`). |
-| **App State Snapshots** | **SQLite `VACUUM INTO`** + **Kopia CLI** (`Apache-2.0`) | Safe live DB snapshots plus FastCDC block-delta deduplication for large custom `.exe` app directories. |
-| **Video Archive** | **Official Go YouTube Data API v3 SDK** (~200 LOC) | Enforces `private` visibility, saves resumable `Location` URIs, enforces `9,600 / 10,000` PT quota cap. |
+| **Core Daemon & CLI** | **Go** (`cmd/cloud-managerd`, `cmd/cloud-manager`, `cmd/CloudManager`, `internal/tray`) | `internal/server/runner.go` -> `RunForegroundDaemon`, `internal/cli/cli.go` -> `Run` |
+| **Frontend UI** | **TypeScript + Vite + `@tanstack/virtual-core` + `lucide`** | `web/src/main.ts` -> `bootstrapApp`, `web/src/views/explorer.ts` -> `renderExplorerView` |
+| **Local Catalog & Queue** | **SQLite 3** (`modernc.org/sqlite` WAL, `busy_timeout = 5000`, `FTS5`, `user_version`) | `internal/db/db.go` -> `Open`, `Store.SearchCatalog`, `SnapshotSQLiteFile` |
+| **Multi-Cloud Pool** | **Rclone Core** (`>= v1.66`, `rcd`, `union`, `hasher`) | `internal/adapters/rclone/rclone.go` -> `Supervisor.Start`, `Supervisor.TransferFile` |
+| **Phone Two-Way Delta** | **Syncthing** (`MPL-2.0` LAN-Only REST API) + **ADB** + **QR Drop-Zone** (`:53317`) | `internal/adapters/syncthing/syncthing.go`, `internal/adapters/adb/adb.go`, `internal/adapters/lanqr/server.go` |
+| **App State Snapshots** | **SQLite `VACUUM INTO`** + **Kopia CLI** (`Apache-2.0`) | `internal/server/server.go` -> `Daemon.handleAppBackplaneSync`, `internal/adapters/kopia/bridge.go` |
+| **Video Archive** | **Official Go YouTube Data API v3 SDK** | `internal/adapters/youtube/uploader.go` -> `Uploader.ProcessJob` |
 
 ---
 
-## 3. Core Subsystems & Security Boundaries (`[PLANNED]`)
+## 3. Core Subsystems & Security Boundaries (`[IMPLEMENTED]`)
 
 ### [SUBSYSTEM: Security-Boundaries-And-Hardening] | Aliases: security boundaries, loopback auth, rclone encryption, job object, data integrity
 > **1-Line Summary:** Enforces fail-closed loopback authentication, DPAPI secrets, TLS LAN isolation, argv-only subprocesses, and atomic SQLite/file integrity across every boundary.
 
-* **Loopback Backplane (`127.0.0.1:59432`):** Binds strictly to `127.0.0.1` (fail closed); requires `Authorization: Bearer <token>` (or `X-Local-Token`) from `%USERPROFILE%\.local\share\ecosystem-secrets.json` (`tokens.cloudManager`); rejects any browser `Origin` header (`403`); validates `Host` (`127.0.0.1:59432` / `localhost:59432`); validates `?app=` (`^[a-z0-9][a-z0-9_-]{0,63}$`).
-* **Path & Subprocess Isolation:** Invokes `rclone`, `syncthing`, `adb`, and `kopia` via Go `exec.Command` argv arrays (never shells). Canonicalizes incoming filenames and rejects `..`, drive prefixes, UNC paths, junctions/symlinks, null bytes, and NTFS reserved names (`CON`, `PRN`, `AUX`, `NUL`, `COM1`–`COM9`, `LPT1`–`LPT9`).
-* **Daemon Supervision & Secrets:** Unlocks `rclone.conf` via Windows DPAPI + `RCLONE_CONFIG_PASS` env var (never CLI argv); spawns `rclone rcd` and `syncthing` on `127.0.0.1:0` with ephemeral 256-bit API auth; binds all child processes to a Windows **Job Object** (`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`).
-* **Log & Telemetry Redaction:** Strips `Authorization`, `X-Local-Token`, OAuth tokens, passwords, and `RCLONE_*` fields from JSONL logs and `<= 5 Hz` SSE streams.
-* **Data Integrity & Backups:** Runs numbered `PRAGMA user_version` migrations with pre-migration `.bak` snapshots (last 5 kept); atomic config saves (`temp -> fsync -> rename`, UTF-8 no BOM); `VACUUM INTO` for live app SQLite DBs; `(sha256, parent_revision)` conflict files (`<name>.conflict-<host>-<utc>.<ext>`).
+* **Loopback Backplane (`127.0.0.1:59432`):** `internal/security/security.go` -> `IsLoopbackBind`, `ValidateLoopbackHost`, `ValidateOrigin`, `ConstantTimeTokenMatch`, `ValidateAppSlug`; `internal/server/server.go` -> `Daemon.withGuard`.
+* **Path & Subprocess Isolation:** `internal/security/security.go` -> `SanitizeRelPath`, `ResolveConfinedPath` (blocks `..`, drives, UNC, null bytes, NTFS reserved names, and symlink/junction escapes).
+* **Daemon Supervision & DPAPI Secrets:** `internal/security/job_windows.go` -> `JobSupervisor` (`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`); `internal/security/dpapi_windows.go` -> `ProtectSecret`, `UnprotectSecret`.
+* **Log Redaction & Atomic Configs:** `internal/security/security.go` -> `RedactSecrets`, `RedactMap`; `internal/config/config.go` -> `WriteAtomicNoBOM`, `Logger`.
 
 ---
 
@@ -141,12 +140,12 @@ flowchart LR
     end
 ```
 
-* **How It Works (Plain English):** Syncthing (LAN-Only, Global Discovery/relays disabled) handles true two-way block-level folder deltas via QR pairing; Wireless/USB ADB inspects phone MediaStore (`images/media`, `video/media`, UTC seconds, `\r\r\n` trimmed) and user-selected folders; the Browser QR Drop-Zone provides zero-app two-way transfers over `:53317`. Changes in `Obsidian` or `GaussBoard` notify `RAG Manager :27130`.
+* **Code Anchors:** `internal/ingest/pipeline.go` -> `Pipeline.Ingest`, `Pipeline.notifyRAGManager`; `internal/adapters/syncthing/syncthing.go` -> `Client`; `internal/adapters/adb/adb.go` -> `Client`; `internal/adapters/lanqr/server.go` -> `Server`.
 
 ---
 
 ### [SUBSYSTEM: YouTube-Resumable-Video-Pipeline] | Aliases: youtube uploader, private video sync, quota ledger, video chunker
-> **1-Line Summary:** Custom ~200 LOC Go uploader streaming 16 MB chunks to private YouTube playlists with persisted session URIs and PT quota limits.
+> **1-Line Summary:** Custom Go uploader streaming 16 MB chunks to private YouTube playlists with persisted session URIs and PT quota limits.
 
 ```mermaid
 flowchart LR
@@ -170,35 +169,33 @@ flowchart LR
     end
 ```
 
-* **How It Works (Plain English):** Enforces `9,600` daily PT quota (1,650 units/video), stores resumable `Location` URIs in SQLite for crash recovery, and skips `videos.list` polling loops.
+* **Code Anchors:** `internal/adapters/youtube/uploader.go` -> `Uploader.ProcessJob`, `Uploader.QuotaStatus`; `internal/db/db.go` -> `Store.AddYouTubeQuota`.
 
 ---
 
 ### [SUBSYSTEM: Localhost-App-Backplane] | Aliases: app sync api, custom exe persistence, port 59432, kopia bridge
 > **1-Line Summary:** Authenticated `127.0.0.1:59432` HTTP + `/mcp` server accepting `VACUUM INTO` DB snapshots, Kopia app-folder deltas, and `--json` CLI invocations.
 
-* **How It Works (Plain English):** Serves custom `.exe` apps and AI agents via `127.0.0.1:59432`, `/mcp`, `cloud-manager://` URI, and `%USERPROFILE%\.local\bin\cloud-manager.exe --json`. Single-file DBs use `VACUUM INTO`; large multi-file `.exe` app directories snapshot through Kopia before cloud dispatch.
+* **Code Anchors:** `internal/server/server.go` -> `Daemon.handleAppBackplaneSync`, `Daemon.handleMCP`; `internal/db/db.go` -> `SnapshotSQLiteFile`; `internal/adapters/kopia/bridge.go` -> `Bridge`.
 
 ---
 
 ### [SUBSYSTEM: Rclone-Pool-And-Catalog-Reconciliation] | Aliases: rclone hasher, gdrive changes, mega append, sqlite cursors
-> **1-Line Summary:** Reconciles Google Drive `changes.list` tokens and Mega `hasher` tree diffs into SQLite tombstones with `509` backoff and Duplicate Inspector support.
+> **1-Line Summary:** Reconciles Google Drive changes and Mega `hasher` tree diffs into SQLite tombstones with `509` backoff and Duplicate Inspector support.
 
-* **How It Works (Plain English):** Tracks `remote_cursors` and `tombstones` in SQLite. Google Drive runs two-way `bisync`; Mega uses `hasher` append/archive tiers with `509` backoff and surfaces remote deletions in a user-reviewable queue while powering the Cross-Account Duplicate Inspector.
+* **Code Anchors:** `internal/adapters/rclone/rclone.go` -> `Supervisor.RefreshQuota`, `Supervisor.ReconcileRemote`, `Supervisor.TransferFile`; `internal/db/db.go` -> `Store.SetRemoteCursor`, `Store.AddTombstone`.
 
 ---
 
-## 4. Verification & CI Pipeline (`[PLANNED]`)
+## 4. Verification & CI Pipeline (`[IMPLEMENTED]`)
 
 ### [FLOW: Automated-Verification-And-CI-Pipeline] | Aliases: ci workflow, security regression, test suite, portable build
-> **1-Line Summary:** Defines GitHub Actions Go + TypeScript CI verification, security regression gates, and tag-triggered portable Windows `.exe` builds.
+> **1-Line Summary:** Runs GitHub Actions Go + TypeScript verification across Ubuntu and Windows runners, security regressions, and tag-triggered portable `.exe` releases.
 
-* **Pipeline Target:** `.github/workflows/ci.yml` (bootstrapped on Phase 1 start from `agent-templates/templates/ci.yml`).
-* **Locked Commands:** `go vet ./...`, `go test -race ./...`, `npm run lint`, `npx tsc --noEmit`, `npm test`, and `GOOS=windows GOARCH=amd64 go build` (plus tag-triggered `vX.Y.Z` portable `CloudManager.exe` release).
-* **Security & Contract Regressions:** Automated tests assert `401` missing auth, `403` `Origin`, mismatched `Host`, `..`/NTFS path rejection, secret redaction, `\r\r\n` ADB fixtures, `--json` exit codes `0/1/2/3`, and UTF-8 without BOM.
+* **Workflows:** `.github/workflows/ci.yml` (`verify-linux` + `verify-windows` with automatic `ci-failure-report` artifact generation) and `.github/workflows/release.yml` (tag-triggered `vX.Y.Z` portable binaries).
 
 ---
 
-## 5. Extension Recipes (`[PLANNED]`)
-1. **Add a Cloud Provider:** Register Rclone remote capabilities (`ModTime`, hash type, rate limits) in the Go Rclone adapter and UI quota meter.
-2. **Add a Routing Predicate:** Extend the Go rule matcher, add dry-run simulator unit tests, and wire the TypeScript Rule Editor field.
+## 5. Extension Recipes
+1. **Add a Cloud Provider:** Extend `internal/adapters/rclone/rclone.go` (`ValidateSyncMode`, `TransferFile`) and add a provider filter chip in `web/src/views/explorer.ts` -> `renderExplorerView`.
+2. **Add a Routing Predicate:** Extend `internal/routing/router.go` -> `matchesRule`, add unit tests in `internal/routing/router_test.go`, and wire the field in `web/src/views/rules.ts` -> `renderRulesView`.
