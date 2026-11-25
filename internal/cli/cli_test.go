@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -58,5 +59,18 @@ func TestCLIJSONContractAndExitCodes(t *testing.T) {
 	code = Run([]string{"quit", "--json"}, strings.NewReader(""), &out, &errBuf)
 	if code != ExitOK || !strings.Contains(out.String(), "alreadyOffline") {
 		t.Fatalf("expected ExitOK alreadyOffline for quit --json, got %d (%s)", code, out.String())
+	}
+
+	// Exit 0 for icon --out --json and emit valid multi-res ICO header.
+	icoPath := filepath.Join(tmp, "cloud-manager.ico")
+	out.Reset()
+	errBuf.Reset()
+	code = Run([]string{"icon", "--out", icoPath, "--json"}, strings.NewReader(""), &out, &errBuf)
+	if code != ExitOK {
+		t.Fatalf("expected ExitOK for icon --out --json, got %d (%s)", code, errBuf.String())
+	}
+	rawICO, err := os.ReadFile(icoPath)
+	if err != nil || len(rawICO) < 22 || rawICO[2] != 1 || rawICO[3] != 0 {
+		t.Fatalf("expected valid ICO file at %s, err=%v len=%d", icoPath, err, len(rawICO))
 	}
 }

@@ -76,6 +76,8 @@ describe('Cloud Manager UI, Theme Contrast & Keyboard Ergonomics', () => {
     await new Promise((r) => setTimeout(r, 30));
 
     expect(document.getElementById('view-heading')?.textContent).toBe('Virtual File Explorer');
+    expect(document.getElementById('brand-icon')?.querySelector('svg')).not.toBeNull();
+    expect(document.querySelector('link[rel="icon"]')?.getAttribute('href')).toBe('/favicon.svg');
     expect(document.getElementById('live-progress-card')?.textContent).toContain('demo.pdf');
     expect(document.querySelectorAll('.vtable-row').length).toBeGreaterThan(0);
 

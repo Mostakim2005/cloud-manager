@@ -176,7 +176,7 @@ flowchart LR
 ### [SUBSYSTEM: Localhost-App-Backplane] | Aliases: app sync api, custom exe persistence, port 59432, kopia bridge
 > **1-Line Summary:** Authenticated `127.0.0.1:59432` HTTP + `/mcp` server accepting `VACUUM INTO` DB snapshots, Kopia app-folder deltas, and `--json` CLI invocations.
 
-* **Code Anchors:** `internal/server/server.go` -> `Daemon.handleAppBackplaneSync`, `Daemon.handleMCP`, `Daemon.handleShutdown`, `Daemon.handleAccounts`; `internal/server/runner.go` -> `ProbeRunningDaemon`, `RunDaemon`; `internal/telemetry/hub.go` -> `Hub.loop`; `internal/cli/cli.go` -> `runQuit`, `runUpgrade`; `internal/db/db.go` -> `SnapshotSQLiteFile`, `Store.DeleteAccount`; `internal/adapters/kopia/bridge.go` -> `Bridge`.
+* **Code Anchors:** `internal/server/server.go` -> `Daemon.handleAppBackplaneSync`, `Daemon.handleMCP`, `Daemon.handleShutdown`, `Daemon.handleAccounts`; `internal/server/runner.go` -> `ProbeRunningDaemon`, `RunDaemon`; `internal/telemetry/hub.go` -> `Hub.loop`; `internal/branding/logo.go` -> `PNG`, `ICO`; `internal/tray/tray_windows.go` -> `loadTrayIcons`; `internal/cli/cli.go` -> `runQuit`, `runUpgrade`, `runIcon`; `internal/db/db.go` -> `SnapshotSQLiteFile`, `Store.DeleteAccount`; `internal/adapters/kopia/bridge.go` -> `Bridge`.
 
 ---
 
@@ -192,7 +192,7 @@ flowchart LR
 ### [FLOW: Automated-Verification-And-CI-Pipeline] | Aliases: ci workflow, security regression, test suite, portable build, inno setup installer
 > **1-Line Summary:** Runs GitHub Actions Go + TypeScript verification across Ubuntu and Windows runners, compiles the per-user Inno Setup installer (`CloudManager-Setup.exe`), and publishes tag-triggered releases.
 
-* **Workflows:** `.github/workflows/ci.yml` (`verify-linux` + `verify-windows` building `-H=windowsgui` `CloudManager.exe`, compiling `packaging/CloudManager.iss` via `ISCC.exe`, smoke-testing `upgrade --dry-run --json`, and generating `ci-failure-report` on failure) and `.github/workflows/release.yml` (`windows-latest` tag-triggered `vX.Y.Z` release of `CloudManager-Setup.exe`, portable binaries, and `SHA256SUMS.txt`).
+* **Workflows:** `.github/workflows/ci.yml` (`verify-linux` + `verify-windows` building `-H=windowsgui` `CloudManager.exe`, generating `build/cloud-manager.ico` via `cloud-manager icon`, compiling `packaging/CloudManager.iss` via `ISCC.exe`, smoke-testing `upgrade --dry-run --json`, and generating `ci-failure-report` on failure) and `.github/workflows/release.yml` (`windows-latest` tag-triggered `vX.Y.Z` release of `CloudManager-Setup.exe`, portable binaries, and `SHA256SUMS.txt`).
 
 ---
 

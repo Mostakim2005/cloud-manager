@@ -18,6 +18,8 @@ DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 OutputDir=..\build
 OutputBaseFilename=CloudManager-Setup
+SetupIconFile=..\build\cloud-manager.ico
+UninstallDisplayIcon={app}\cloud-manager.ico
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
@@ -35,14 +37,15 @@ Name: "startup"; Description: "Start silently in background tray when Windows si
 Source: "..\build\CloudManager.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\build\cloud-manager.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\build\cloud-managerd.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\build\cloud-manager.ico"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\build\CloudManager.exe"; DestDir: "{%USERPROFILE}\.local\bin"; Flags: ignoreversion
 Source: "..\build\cloud-manager.exe"; DestDir: "{%USERPROFILE}\.local\bin"; Flags: ignoreversion
 Source: "..\build\cloud-managerd.exe"; DestDir: "{%USERPROFILE}\.local\bin"; Flags: ignoreversion
 
 [Icons]
-Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Comment: "Open Cloud Manager Dashboard & System Tray"
+Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\cloud-manager.ico"; Comment: "Open Cloud Manager Dashboard & System Tray"
 Name: "{group}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon; Comment: "Open Cloud Manager Dashboard"
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\cloud-manager.ico"; Tasks: desktopicon; Comment: "Open Cloud Manager Dashboard"
 
 [Registry]
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "CloudManager"; ValueData: """{app}\{#MyAppExeName}"" --background"; Flags: uninsdeletevalue; Tasks: startup

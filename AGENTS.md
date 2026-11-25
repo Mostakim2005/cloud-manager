@@ -16,8 +16,8 @@
 
 ## 3. Repository Directory Structure
 * `cmd/` — Go entrypoints (`CloudManager/`, `cloud-manager/`, `cloud-managerd/`).
-* `internal/` — Modular Go backend (`security/`, `config/`, `db/`, `telemetry/`, `routing/`, `ingest/`, `adapters/{rclone,syncthing,adb,lanqr,youtube,kopia}/`, `qrsvg/`, `doctor/`, `tray/`, `webui/`, `server/`, `cli/`).
-* `web/` — TypeScript + Vite Material 3 Tonal frontend (`src/`, `tests/`, `index.html`, `package.json`, `tsconfig.json`, `eslint.config.js`, `vite.config.ts`).
+* `internal/` — Modular Go backend (`branding/`, `security/`, `config/`, `db/`, `telemetry/`, `routing/`, `ingest/`, `adapters/{rclone,syncthing,adb,lanqr,youtube,kopia}/`, `qrsvg/`, `doctor/`, `tray/`, `webui/`, `server/`, `cli/`).
+* `web/` — TypeScript + Vite Material 3 Tonal frontend (`src/`, `public/favicon.svg`, `tests/`, `index.html`, `package.json`, `tsconfig.json`, `eslint.config.js`, `vite.config.ts`).
 * `packaging/` — Per-user Inno Setup Windows installer script (`CloudManager.iss`).
 * `.github/workflows/` — Authoritative CI (`ci.yml` on Linux + Windows) and tag-triggered installer + portable `.exe` release (`release.yml`).
 * `docs/` — Living Markdown docs (`PRODUCT.md`, `ARCHITECTURE.md`, `DECISIONS_AND_TRAPS.md`, `modules/implementation-plan.md`). Scan with `grep -A 1 "^### \[" docs/`.

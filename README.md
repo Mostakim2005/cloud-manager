@@ -7,8 +7,8 @@ Unified multi-cloud storage pooler, deterministic smart router, two-way Wi-Fi/AD
 
 ## Architecture Overview
 
-* **Go Core Daemon & CLI:** `cmd/cloud-managerd`, `cmd/cloud-manager`, and windowless (`-H=windowsgui`) `cmd/CloudManager` supporting silent `--background` Windows sign-in startup, single-instance browser wake, demand-driven `0%` idle SSE telemetry (`<= 5 Hz` only when UI tabs are connected), authenticated loopback HTTP + Streamable `/mcp` on `127.0.0.1:59432`, and Windows System Tray (`internal/tray`).
-* **Per-User Windows Installer & Self-Upgrade:** Zero-admin Inno Setup installer (`packaging/CloudManager.iss` -> `CloudManager-Setup.exe`) installing Start Menu & Desktop shortcuts, `HKCU\...\Run` silent auto-start, and `cloud-manager://` URI registration, plus `cloud-manager upgrade` and `cloud-manager quit`.
+* **Go Core Daemon & CLI:** `cmd/cloud-managerd`, `cmd/cloud-manager`, and windowless (`-H=windowsgui`) `cmd/CloudManager` supporting silent `--background` Windows sign-in startup, single-instance browser wake, demand-driven `0%` idle SSE telemetry (`<= 5 Hz` only when UI tabs are connected), custom SDF-rendered Windows System Tray & multi-res `.ico` logo (`internal/branding`, `internal/tray`), and authenticated loopback HTTP + Streamable `/mcp` on `127.0.0.1:59432`.
+* **Per-User Windows Installer & Self-Upgrade:** Zero-admin Inno Setup installer (`packaging/CloudManager.iss` -> `CloudManager-Setup.exe`) installing branded Start Menu & Desktop shortcuts, `HKCU\...\Run` silent auto-start, and `cloud-manager://` URI registration, plus `cloud-manager upgrade` and `cloud-manager quit`.
 * **Supervised External Adapters:** Job-Object-bound wrappers (`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`) for `rclone rcd` (`>= v1.66` with `hasher` Mega Append/Archive), unmodified upstream `Syncthing` LAN-Only REST API, `ADB` Wireless QR / USB MediaStore (`\r\r\n` & UTC second normalization), `Kopia` FastCDC block-delta snapshots, opt-in Browser QR Drop-Zone (`https://<lan-ip>:53317` + 6-digit PIN, OFF by default), and Go YouTube Data API v3 private resumable uploader (`16 MiB` chunks, `9,600 / 10,000` PT quota ledger).
 
 ## UI Surface Inventory
@@ -33,6 +33,7 @@ cloud-manager doctor --json
 cloud-manager status --json
 cloud-manager quit --json
 cloud-manager upgrade --dry-run --json
+cloud-manager icon --out build\cloud-manager.ico --json
 cloud-manager pool quota --json
 cloud-manager pool duplicates --json
 cloud-manager route test lecture.mp4 --origin recordings --size 52428800 --json

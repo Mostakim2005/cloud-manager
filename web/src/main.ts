@@ -1,7 +1,7 @@
 import './styles/tokens.css';
 import './styles/app.css';
 import { apiRequest, subscribeTelemetry } from './api';
-import { iconEl, type IconName } from './icons';
+import { brandLogoEl, iconEl, type IconName } from './icons';
 import { applyDensity, applyTheme, getSavedDensity, getSavedTheme, initThemeListeners } from './theme';
 import type { Account, TelemetrySnapshot, ViewId } from './types';
 import { el, formatBytes, openModalDialog, showToast } from './ui';
@@ -34,7 +34,7 @@ export function bootstrapApp(): () => void {
   applyDensity(getSavedDensity(), false);
 
   const brandIcon = document.getElementById('brand-icon');
-  brandIcon?.replaceChildren(iconEl('cloud', 20));
+  brandIcon?.replaceChildren(brandLogoEl(22));
   document.getElementById('btn-drawer-toggle')?.replaceChildren(iconEl('menu', 18));
   document.getElementById('btn-open-shortcuts')?.replaceChildren(iconEl('help', 18));
   document.getElementById('throughput-icon')?.replaceChildren(iconEl('activity', 14));

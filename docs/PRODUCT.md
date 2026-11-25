@@ -55,7 +55,7 @@
 * **User Intention (Non-Negotiable):** Let custom `.exe` and Pentagram apps push/pull state over `127.0.0.1:59432` or CLI/MCP without bundling cloud SDKs, keeping large app directories deduplicated.
 * **Implementation & Anchors:**
   * Loopback HTTP + `/mcp` + `VACUUM INTO` + Kopia routing + graceful shutdown: `internal/server/server.go` -> `Daemon.withGuard`, `Daemon.handleAppBackplaneSync`, `Daemon.handleMCP`, `Daemon.handleShutdown`.
-  * Single-instance background daemon (`--background`), demand-driven `0%` idle telemetry ticker, and self-upgrade/quit CLI (`cloud-manager://`, `cloud-manager quit`, `cloud-manager upgrade`): `internal/server/runner.go` -> `ProbeRunningDaemon`, `RunDaemon`; `internal/telemetry/hub.go` -> `Hub.loop`; `internal/cli/cli.go` -> `Run`, `runOpenURI`, `runQuit`, `runUpgrade`; `internal/adapters/kopia/bridge.go` -> `Bridge.CreateSnapshot`.
+  * Single-instance background daemon (`--background`), demand-driven `0%` idle telemetry ticker, custom Win32 tray logo + multi-res `.ico` (`internal/branding`, `internal/tray`), and self-upgrade/quit/icon CLI (`cloud-manager://`, `cloud-manager quit`, `cloud-manager upgrade`, `cloud-manager icon`): `internal/server/runner.go` -> `ProbeRunningDaemon`, `RunDaemon`; `internal/telemetry/hub.go` -> `Hub.loop`; `internal/branding/logo.go` -> `PNG`, `ICO`; `internal/tray/tray_windows.go` -> `loadTrayIcons`; `internal/cli/cli.go` -> `Run`, `runOpenURI`, `runQuit`, `runUpgrade`, `runIcon`; `internal/adapters/kopia/bridge.go` -> `Bridge.CreateSnapshot`.
   * SQLite safe snapshot & security path jail: `internal/db/db.go` -> `SnapshotSQLiteFile`; `internal/security/security.go` -> `ResolveConfinedPath`.
 
 ---
@@ -65,7 +65,7 @@
 * **User Intention (Non-Negotiable):** Sub-5 ms offline search and 60 FPS scrolling with instant status feedback, zero contrast issues across themes, and effortless keyboard-first navigation.
 * **Implementation & Anchors:**
   * `web/src/views/explorer.ts` -> `renderExplorerView` (`@tanstack/virtual-core` `Virtualizer`, FTS5 query, filter chips + Reset, `#live-progress-card` live SSE transfer queue with Pause/Resume, `Space` Quick-Look `<dialog>`).
-  * `web/src/main.ts` -> `bootstrapApp` (`Ctrl+K` palette, `?` shortcuts, `Ctrl+1..6`, SSE `subscribeTelemetry`).
+  * `web/src/main.ts` -> `bootstrapApp` (`Ctrl+K` palette, `?` shortcuts, `Ctrl+1..6`, SSE `subscribeTelemetry`), `web/src/icons.ts` -> `brandLogoEl`, and `web/public/favicon.svg`.
   * `web/src/theme.ts` -> `applyTheme`, `applyDensity`; `web/src/styles/tokens.css` (WCAG AA Material 3 Light/Dark/System tokens).
 
 ---

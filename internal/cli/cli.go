@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Mostakim2005/cloud-manager/internal/branding"
 	"github.com/Mostakim2005/cloud-manager/internal/config"
 	"github.com/Mostakim2005/cloud-manager/internal/db"
 	"github.com/Mostakim2005/cloud-manager/internal/doctor"
@@ -68,6 +69,8 @@ func Run(args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) int
 		return runQuit(rest, secrets, stdout, stderr)
 	case "upgrade":
 		return runUpgrade(rest, secrets, stdout, stderr)
+	case "icon":
+		return runIcon(rest, stdout, stderr)
 	default:
 		emitError(stderr, stdout, hasJSONFlag(rest), ExitInvalidArg, fmt.Sprintf("unknown command %q", cmd))
 		return ExitInvalidArg
@@ -676,5 +679,41 @@ Commands:
   youtube <quota|queue <file>> [--dry-run] [--json]
   open-uri <cloud-manager://...>
   quit [--json]
-  upgrade [--source ci|release] [--dry-run] [--json]`)
+  upgrade [--source ci|release] [--dry-run] [--json]
+  icon --out <path.ico> [--json]`)
+}
+
+func runIcon(args []string, stdout, stderr io.Writer) int {
+	asJSON := hasJSONFlag(args)
+	clean := stripGlobalFlags(args)
+	fs := flag.NewFlagSet("icon", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	outPath := fs.String("out", "", "output .ico path")
+	if _, err := parseFlexibleFlags(fs, clean, map[string]bool{"out": true}); err != nil {
+		emitError(stderr, stdout, asJSON, ExitInvalidArg, err.Error())
+		return ExitInvalidArg
+	}
+	if strings.TrimSpace(*outPath) == "" {
+		emitError(stderr, stdout, asJSON, ExitInvalidArg, "missing --out <path.ico>")
+		return ExitInvalidArg
+	}
+	ico, err := branding.ICO()
+	if err != nil {
+		emitError(stderr, stdout, asJSON, ExitRuntime, err.Error())
+		return ExitRuntime
+	}
+	if err := os.MkdirAll(filepath.Dir(*outPath), 0755); err != nil {
+		emitError(stderr, stdout, asJSON, ExitRuntime, err.Error())
+		return ExitRuntime
+	}
+	if err := os.WriteFile(*outPath, ico, 0644); err != nil {
+		emitError(stderr, stdout, asJSON, ExitRuntime, err.Error())
+		return ExitRuntime
+	}
+	if asJSON {
+		emitJSON(stdout, map[string]any{"ok": true, "path": *outPath, "bytes": len(ico)})
+	} else {
+		fmt.Fprintf(stdout, "Wrote %d bytes to %s\n", len(ico), *outPath)
+	}
+	return ExitOK
 }

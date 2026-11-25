@@ -218,6 +218,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           .\build\cloud-manager.exe upgrade --dry-run --json | Tee-Object -FilePath .ci-logs\win-04-smoke.log -Append
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          .\build\cloud-manager.exe icon --out build\cloud-manager.ico --json | Tee-Object -FilePath .ci-logs\win-04-smoke.log -Append
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
           if (-not (Test-Path $iscc)) {
             choco install innosetup -y --no-progress | Out-Null

@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"unsafe"
 
+	"github.com/Mostakim2005/cloud-manager/internal/branding"
 	"golang.org/x/sys/windows"
 )
 
@@ -18,24 +19,27 @@ var (
 	shell32  = windows.NewLazySystemDLL("shell32.dll")
 	kernel32 = windows.NewLazySystemDLL("kernel32.dll")
 
-	procGetModuleHandleW    = kernel32.NewProc("GetModuleHandleW")
-	procRegisterClassExW    = user32.NewProc("RegisterClassExW")
-	procCreateWindowExW     = user32.NewProc("CreateWindowExW")
-	procDefWindowProcW      = user32.NewProc("DefWindowProcW")
-	procDestroyWindow       = user32.NewProc("DestroyWindow")
-	procGetMessageW         = user32.NewProc("GetMessageW")
-	procTranslateMessage    = user32.NewProc("TranslateMessage")
-	procDispatchMessageW    = user32.NewProc("DispatchMessageW")
-	procPostQuitMessage     = user32.NewProc("PostQuitMessage")
-	procPostMessageW        = user32.NewProc("PostMessageW")
-	procLoadIconW           = user32.NewProc("LoadIconW")
-	procCreatePopupMenu     = user32.NewProc("CreatePopupMenu")
-	procAppendMenuW         = user32.NewProc("AppendMenuW")
-	procDestroyMenu         = user32.NewProc("DestroyMenu")
-	procTrackPopupMenu      = user32.NewProc("TrackPopupMenu")
-	procSetForegroundWindow = user32.NewProc("SetForegroundWindow")
-	procGetCursorPos        = user32.NewProc("GetCursorPos")
-	procShellNotifyIconW    = shell32.NewProc("Shell_NotifyIconW")
+	procGetModuleHandleW         = kernel32.NewProc("GetModuleHandleW")
+	procRegisterClassExW         = user32.NewProc("RegisterClassExW")
+	procCreateWindowExW          = user32.NewProc("CreateWindowExW")
+	procDefWindowProcW           = user32.NewProc("DefWindowProcW")
+	procDestroyWindow            = user32.NewProc("DestroyWindow")
+	procGetMessageW              = user32.NewProc("GetMessageW")
+	procTranslateMessage         = user32.NewProc("TranslateMessage")
+	procDispatchMessageW         = user32.NewProc("DispatchMessageW")
+	procPostQuitMessage          = user32.NewProc("PostQuitMessage")
+	procPostMessageW             = user32.NewProc("PostMessageW")
+	procLoadIconW                = user32.NewProc("LoadIconW")
+	procCreateIconFromResourceEx = user32.NewProc("CreateIconFromResourceEx")
+	procDestroyIcon              = user32.NewProc("DestroyIcon")
+	procGetSystemMetrics         = user32.NewProc("GetSystemMetrics")
+	procCreatePopupMenu          = user32.NewProc("CreatePopupMenu")
+	procAppendMenuW              = user32.NewProc("AppendMenuW")
+	procDestroyMenu              = user32.NewProc("DestroyMenu")
+	procTrackPopupMenu           = user32.NewProc("TrackPopupMenu")
+	procSetForegroundWindow      = user32.NewProc("SetForegroundWindow")
+	procGetCursorPos             = user32.NewProc("GetCursorPos")
+	procShellNotifyIconW         = shell32.NewProc("Shell_NotifyIconW")
 )
 
 const (
@@ -55,6 +59,9 @@ const (
 	tpmBottomAlign = 0x0020
 	tpmLeftAlign   = 0x0000
 	idiApplication = 32512
+	smCXIcon       = 11
+	smCXSmIcon     = 49
+	iconVersion    = 0x00030000
 
 	cmdOpenDashboard = 1001
 	cmdToggleLAN     = 1002
@@ -133,13 +140,16 @@ func Start(cb Callbacks) *Controller {
 
 		hInst, _, _ := procGetModuleHandleW.Call(0)
 		className, _ := syscall.UTF16PtrFromString("CloudManagerTrayWindow")
-		hIcon, _, _ := procLoadIconW.Call(0, uintptr(idiApplication))
+		smIcon, lgIcon, customIcons, cleanupIcons := loadTrayIcons()
+		defer cleanupIcons()
+		_ = customIcons
 
 		wc := wndClassExW{
 			cbSize:        uint32(unsafe.Sizeof(wndClassExW{})),
 			lpfnWndProc:   syscall.NewCallback(wndProc),
 			hInstance:     hInst,
-			hIcon:         hIcon,
+			hIcon:         lgIcon,
+			hIconSm:       smIcon,
 			lpszClassName: className,
 		}
 		procRegisterClassExW.Call(uintptr(unsafe.Pointer(&wc)))
@@ -158,7 +168,7 @@ func Start(cb Callbacks) *Controller {
 		nid.uID = 1
 		nid.uFlags = nifMessage | nifIcon | nifTip
 		nid.uCallbackMessage = wmTrayIcon
-		nid.hIcon = hIcon
+		nid.hIcon = smIcon
 		tip, _ := syscall.UTF16FromString("Cloud Manager (:59432)")
 		copy(nid.szTip[:], tip)
 		procShellNotifyIconW.Call(nimAdd, uintptr(unsafe.Pointer(&nid)))
@@ -248,4 +258,58 @@ func showContextMenu(hwnd uintptr) {
 	procGetCursorPos.Call(uintptr(unsafe.Pointer(&pt)))
 	procSetForegroundWindow.Call(hwnd)
 	procTrackPopupMenu.Call(hMenu, tpmBottomAlign|tpmLeftAlign, uintptr(pt.x), uintptr(pt.y), 0, hwnd, 0)
+}
+
+func loadTrayIcons() (smIcon, lgIcon uintptr, custom bool, cleanup func()) {
+	smPx := metricClamped(smCXSmIcon, 32, 16, 64)
+	lgPx := metricClamped(smCXIcon, 48, 32, 128)
+
+	var destroyList []uintptr
+	if ic := createPNGIcon(smPx); ic != 0 {
+		smIcon = ic
+		destroyList = append(destroyList, ic)
+	}
+	if ic := createPNGIcon(lgPx); ic != 0 {
+		lgIcon = ic
+		destroyList = append(destroyList, ic)
+	}
+	custom = smIcon != 0
+	if smIcon == 0 {
+		smIcon, _, _ = procLoadIconW.Call(0, uintptr(idiApplication))
+	}
+	if lgIcon == 0 {
+		lgIcon = smIcon
+	}
+	return smIcon, lgIcon, custom, func() {
+		for _, ic := range destroyList {
+			procDestroyIcon.Call(ic)
+		}
+	}
+}
+
+func metricClamped(index, fallback, minVal, maxVal int) int {
+	val, _, _ := procGetSystemMetrics.Call(uintptr(index))
+	n := int(val)
+	if n < minVal || n > maxVal {
+		return fallback
+	}
+	return n
+}
+
+func createPNGIcon(size int) uintptr {
+	pngBytes, err := branding.PNG(size)
+	if err != nil || len(pngBytes) == 0 {
+		return 0
+	}
+	hIcon, _, _ := procCreateIconFromResourceEx.Call(
+		uintptr(unsafe.Pointer(&pngBytes[0])),
+		uintptr(len(pngBytes)),
+		1,
+		uintptr(iconVersion),
+		uintptr(size),
+		uintptr(size),
+		0,
+	)
+	runtime.KeepAlive(pngBytes)
+	return hIcon
 }

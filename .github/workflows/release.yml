@@ -40,6 +40,7 @@ jobs:
           go build -trimpath -ldflags="-s -w -H=windowsgui" -o build\CloudManager.exe .\cmd\CloudManager
           go build -trimpath -ldflags="-s -w" -o build\cloud-manager.exe .\cmd\cloud-manager
           go build -trimpath -ldflags="-s -w" -o build\cloud-managerd.exe .\cmd\cloud-managerd
+          .\build\cloud-manager.exe icon --out build\cloud-manager.ico
           $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
           if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress | Out-Null }
           & $iscc packaging\CloudManager.iss
