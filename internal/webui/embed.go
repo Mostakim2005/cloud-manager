@@ -6,7 +6,7 @@ import (
 	"net/http"
 )
 
-//go:embed dist/*
+//go:embed all:dist
 var distFS embed.FS
 
 // Assets returns the embedded web/dist filesystem (rooted at dist).

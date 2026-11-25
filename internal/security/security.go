@@ -32,7 +32,7 @@ var ntfsReservedNames = map[string]struct{}{
 	"LPT6": {}, "LPT7": {}, "LPT8": {}, "LPT9": {},
 }
 
-var sensitiveFieldRegex = regexp.MustCompile(`(?i)(authorization|x-local-token|access_token|refresh_token|password|rc_pass|secret|rclone_[a-z0-9_]+|bearer\s+)[=:\s"]+([^\s"',}]+)`)
+var sensitiveFieldRegex = regexp.MustCompile(`(?i)(authorization[=:\s"]+bearer\s+|bearer\s+|(?:x-local-token|access_token|refresh_token|password|rc_pass|secret|rclone_[a-z0-9_]+)[=:\s"]+)([^\s"',}]+)`)
 
 // GenerateToken returns a URL-safe cryptographically random 256-bit token.
 func GenerateToken() (string, error) {

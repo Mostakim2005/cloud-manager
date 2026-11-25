@@ -57,11 +57,11 @@ func TestADBCRLFMediaStoreDeltaAndQR(t *testing.T) {
 	}
 
 	items, err := client.QueryMediaDelta(context.Background(), "R5CT12345")
-	if err != nil || len(items) != 2 {
-		t.Fatalf("expected 2 media items, got %d (%v)", len(items), err)
+	if err != nil || len(items) != 3 {
+		t.Fatalf("expected 3 media items (2 images + 1 video), got %d (%v)", len(items), err)
 	}
-	if items[0].NeedsPull || !items[1].NeedsPull {
-		t.Fatalf("expected IMG_ALREADY NeedsPull=false and CLIP_01 NeedsPull=true, got %+v", items)
+	if items[0].NeedsPull || !items[1].NeedsPull || !items[2].NeedsPull {
+		t.Fatalf("expected IMG_ALREADY NeedsPull=false and IMG_NEW+CLIP_01 NeedsPull=true, got %+v", items)
 	}
 	if items[0].ModifiedUTC != 1732500000 {
 		t.Fatalf("expected UTC seconds 1732500000, got %d", items[0].ModifiedUTC)

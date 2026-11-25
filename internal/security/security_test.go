@@ -98,12 +98,16 @@ func TestPathTraversalAndNTFSConfinement(t *testing.T) {
 	}
 
 	root := t.TempDir()
+	evalRoot, _ := filepath.EvalSymlinks(root)
+	if evalRoot == "" {
+		evalRoot = root
+	}
 	good, err := ResolveConfinedPath(root, "inbox/photo_01.heic")
 	if err != nil {
 		t.Fatalf("expected clean path to succeed, got %v", err)
 	}
-	if !strings.HasPrefix(good, root) {
-		t.Fatalf("resolved path %q outside %q", good, root)
+	if !strings.HasPrefix(good, evalRoot) {
+		t.Fatalf("resolved path %q outside %q", good, evalRoot)
 	}
 
 	outside := t.TempDir()

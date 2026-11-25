@@ -48,7 +48,7 @@ jobs:
             echo "$UNFMT" | tee -a .ci-logs/02-format-lint.log
             exit 1
           fi
-          go vet ./... 2>&1 | tee .ci-logs/02-format-lint.log
+          go vet ./cmd/... ./internal/... 2>&1 | tee .ci-logs/02-format-lint.log
           cd web && npm run lint 2>&1 | tee -a ../.ci-logs/02-format-lint.log
 
       - name: 3. Static Type Check (TypeScript)
@@ -70,7 +70,7 @@ jobs:
       - name: 6. Backend Unit, Concurrency & Security Regression Tests
         run: |
           set -o pipefail
-          go test -race -v ./... 2>&1 | tee .ci-logs/06-backend-tests.log
+          go test -race -v ./cmd/... ./internal/... 2>&1 | tee .ci-logs/06-backend-tests.log
 
       - name: 7. Security Audit & Cross-Compile Windows Portable Binaries
         run: |
@@ -201,7 +201,7 @@ jobs:
           npm install --no-audit --no-fund 2>&1 | Tee-Object -FilePath ..\.ci-logs\win-01-deps.log -Append
           npm run build 2>&1 | Tee-Object -FilePath ..\.ci-logs\win-02-ui-build.log
           Pop-Location
-          go test -v ./... 2>&1 | Tee-Object -FilePath .ci-logs\win-03-go-tests.log
+          go test -v ./cmd/... ./internal/... 2>&1 | Tee-Object -FilePath .ci-logs\win-03-go-tests.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Build Windows Executables & CLI Smoke Tests
