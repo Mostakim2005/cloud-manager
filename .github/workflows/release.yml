@@ -1,4 +1,4 @@
-name: Release Portable Windows Build
+name: Release Portable & Windows Installer Build
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   release:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -23,24 +23,34 @@ jobs:
           node-version: "22"
 
       - name: Build Embedded TypeScript UI
+        shell: pwsh
         run: |
-          cd web
+          Push-Location web
           npm install --no-audit --no-fund
           npm run build
+          Pop-Location
 
-      - name: Build Portable Windows x64 Binaries
+      - name: Build Portable Windows x64 Binaries & Per-User Installer
+        shell: pwsh
         run: |
-          mkdir -p release-assets
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Path build, release-assets -Force | Out-Null
           go mod tidy
-          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o release-assets/CloudManager.exe ./cmd/CloudManager
-          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o release-assets/cloud-manager.exe ./cmd/cloud-manager
-          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o release-assets/cloud-managerd.exe ./cmd/cloud-managerd
-          cd release-assets && sha256sum *.exe > SHA256SUMS.txt
+          $env:CGO_ENABLED = '0'
+          go build -trimpath -ldflags="-s -w -H=windowsgui" -o build\CloudManager.exe .\cmd\CloudManager
+          go build -trimpath -ldflags="-s -w" -o build\cloud-manager.exe .\cmd\cloud-manager
+          go build -trimpath -ldflags="-s -w" -o build\cloud-managerd.exe .\cmd\cloud-managerd
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress | Out-Null }
+          & $iscc packaging\CloudManager.iss
+          Copy-Item build\*.exe release-assets\
+          Get-FileHash release-assets\*.exe -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  $(Split-Path $_.Path -Leaf)" } | Set-Content -Encoding UTF8 release-assets\SHA256SUMS.txt
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
+            release-assets/CloudManager-Setup.exe
             release-assets/CloudManager.exe
             release-assets/cloud-manager.exe
             release-assets/cloud-managerd.exe

@@ -121,4 +121,30 @@ func TestSecurityBoundariesHostOriginBearerAndAppBackplane(t *testing.T) {
 	if mcpRec.Code != http.StatusOK || !strings.Contains(mcpRec.Body.String(), "youtube") {
 		t.Fatalf("expected MCP dry-run youtube result, got %d: %s", mcpRec.Code, mcpRec.Body.String())
 	}
+
+	// 9. Connect Mega account enforces hasher overlay, and Delete removes it cleanly.
+	accReq := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:59432/api/v1/accounts", strings.NewReader(`{"id":"mega-2","name":"Mega #2","provider":"mega","totalGb":20}`))
+	accReq.Header.Set("Authorization", "Bearer cm-secret-token-xyz")
+	accRec := httptest.NewRecorder()
+	h.ServeHTTP(accRec, accReq)
+	if accRec.Code != http.StatusCreated || !strings.Contains(accRec.Body.String(), "mega-2-hasher:") {
+		t.Fatalf("expected 201 Mega account with hasher overlay, got %d: %s", accRec.Code, accRec.Body.String())
+	}
+	delReq := httptest.NewRequest(http.MethodDelete, "http://127.0.0.1:59432/api/v1/accounts?id=mega-2", nil)
+	delReq.Header.Set("Authorization", "Bearer cm-secret-token-xyz")
+	delRec := httptest.NewRecorder()
+	h.ServeHTTP(delRec, delReq)
+	if delRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 deleting mega-2, got %d", delRec.Code)
+	}
+
+	// 10. Shutdown endpoint must reject Origin headers (CSRF guard) and honor Bearer token.
+	shutBad := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:59432/api/v1/shutdown", nil)
+	shutBad.Header.Set("Authorization", "Bearer cm-secret-token-xyz")
+	shutBad.Header.Set("Origin", "http://127.0.0.1:59432")
+	shutBadRec := httptest.NewRecorder()
+	h.ServeHTTP(shutBadRec, shutBad)
+	if shutBadRec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 Origin block on /api/v1/shutdown, got %d", shutBadRec.Code)
+	}
 }

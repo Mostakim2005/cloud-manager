@@ -2,7 +2,7 @@
 > **1-Line Summary:** Permanent source of truth for user intentions, implemented v1 features with verified symbol anchors, non-goals, and deferred wishlist for Cloud Manager.
 
 ## 1. Core Vision & User Experience Intent
-* **Build Status:** **Implemented (Phases 1–4 Complete)** using **Go Core Daemon (`cmd/cloud-managerd` + `cmd/cloud-manager` + portable `cmd/CloudManager`) + TypeScript/Vite Material 3 Tonal Browser UI (`web/`) + Windows System Tray (`internal/tray`)**.
+* **Build Status:** **Implemented (Phases 1–4 + Per-User Installer Complete)** using **Go Core Daemon (`cmd/cloud-managerd` + `cmd/cloud-manager` + windowless `-H=windowsgui` `cmd/CloudManager`) + TypeScript/Vite Material 3 Tonal Browser UI (`web/`) + Windows System Tray (`internal/tray`) + Per-User Inno Setup Installer (`packaging/CloudManager.iss`)**.
 * **AI-Friendly Language & Reuse Policy:** Custom code stays strictly in **Go** and **TypeScript/JavaScript**. External OSS tools (`Rclone`, unmodified upstream `Syncthing`, `Kopia`, `ADB`, `SQLite 3`) run as Job-Object-supervised adapters.
 * **What This App Does (Plain English):** Cloud Manager pools multiple Google Drive and Mega.nz accounts into one virtual catalog, routes incoming files deterministically, runs two-way delta sync between PC and phone over **Wi-Fi (Syncthing LAN-Only + Ephemeral Browser QR Drop-Zone) and Wireless/USB ADB**, archives videos to private YouTube playlists, and exposes an authenticated `127.0.0.1:59432` backplane + Kopia block-delta snapshots for custom Windows `.exe` apps and Pentagram tools.
 * **How It Must Feel to Use:** Instant and zero-freeze. Local FTS5 browsing resolves in milliseconds from SQLite WAL (`internal/db`) without waiting on cloud APIs, paired with throttled (`<= 5 Hz`) SSE telemetry (`internal/telemetry`) and Light/Dark/System Material 3 UI parity.
@@ -16,6 +16,7 @@
 * **User Intention (Non-Negotiable):** Connect multiple Google Drive and Mega accounts simultaneously, monitor individual and pooled gigabyte quotas, browse files in one catalog, and reclaim duplicate storage across accounts.
 * **Implementation & Anchors:**
   * Rclone `rcd` supervisor (`>= v1.66`), `hasher` overlay config, HTTP `509` cooldowns, and `remote_cursors`/`tombstones` reconciliation: `internal/adapters/rclone/rclone.go` -> `Supervisor`, `ValidateSyncMode`, `EnsureMegaHasherConfig`, `ReconcileRemote`.
+  * Interactive `+ Connect` Google Drive / Mega / YouTube account modal & disconnect flow: `web/src/main.ts` -> `bootstrapApp`; `web/index.html` -> `#connect-account-dialog`; `internal/server/server.go` -> `Daemon.handleAccounts`; `internal/db/db.go` -> `Store.DeleteAccount`.
   * Cross-Account SHA-256 Duplicate Inspector and 30-day Quarantine: `internal/db/db.go` -> `Store.ListDuplicates`, `Store.SoftDeleteFile`, `Store.ResolveTombstone`.
 
 ---
@@ -53,8 +54,8 @@
 > **1-Line Summary:** Provides an authenticated `127.0.0.1:59432` HTTP + `/mcp` backplane, `--json` CLI, `cloud-manager://` URI, `VACUUM INTO` safety, and Kopia block-delta snapshots.
 * **User Intention (Non-Negotiable):** Let custom `.exe` and Pentagram apps push/pull state over `127.0.0.1:59432` or CLI/MCP without bundling cloud SDKs, keeping large app directories deduplicated.
 * **Implementation & Anchors:**
-  * Loopback HTTP + `/mcp` + `VACUUM INTO` + Kopia routing: `internal/server/server.go` -> `Daemon.withGuard`, `Daemon.handleAppBackplaneSync`, `Daemon.handleMCP`.
-  * Deterministic `--json` CLI & `cloud-manager://` URI handler: `internal/cli/cli.go` -> `Run`, `runOpenURI`; `internal/adapters/kopia/bridge.go` -> `Bridge.CreateSnapshot`.
+  * Loopback HTTP + `/mcp` + `VACUUM INTO` + Kopia routing + graceful shutdown: `internal/server/server.go` -> `Daemon.withGuard`, `Daemon.handleAppBackplaneSync`, `Daemon.handleMCP`, `Daemon.handleShutdown`.
+  * Single-instance background daemon (`--background`), demand-driven `0%` idle telemetry ticker, and self-upgrade/quit CLI (`cloud-manager://`, `cloud-manager quit`, `cloud-manager upgrade`): `internal/server/runner.go` -> `ProbeRunningDaemon`, `RunDaemon`; `internal/telemetry/hub.go` -> `Hub.loop`; `internal/cli/cli.go` -> `Run`, `runOpenURI`, `runQuit`, `runUpgrade`; `internal/adapters/kopia/bridge.go` -> `Bridge.CreateSnapshot`.
   * SQLite safe snapshot & security path jail: `internal/db/db.go` -> `SnapshotSQLiteFile`; `internal/security/security.go` -> `ResolveConfinedPath`.
 
 ---
@@ -63,7 +64,7 @@
 > **1-Line Summary:** Renders 50,000+ SQLite-cached files at 60 FPS with Clean Minimalist + Material 3 Tonal Surfaces, `Ctrl+K` quick-picker, `?` cheat-sheet, density toggle, and `Space` Quick-Look.
 * **User Intention (Non-Negotiable):** Sub-5 ms offline search and 60 FPS scrolling with instant status feedback, zero contrast issues across themes, and effortless keyboard-first navigation.
 * **Implementation & Anchors:**
-  * `web/src/views/explorer.ts` -> `renderExplorerView` (`@tanstack/virtual-core` `Virtualizer`, FTS5 query, filter chips + Reset, `Space` Quick-Look `<dialog>`).
+  * `web/src/views/explorer.ts` -> `renderExplorerView` (`@tanstack/virtual-core` `Virtualizer`, FTS5 query, filter chips + Reset, `#live-progress-card` live SSE transfer queue with Pause/Resume, `Space` Quick-Look `<dialog>`).
   * `web/src/main.ts` -> `bootstrapApp` (`Ctrl+K` palette, `?` shortcuts, `Ctrl+1..6`, SSE `subscribeTelemetry`).
   * `web/src/theme.ts` -> `applyTheme`, `applyDensity`; `web/src/styles/tokens.css` (WCAG AA Material 3 Light/Dark/System tokens).
 

@@ -32,6 +32,9 @@ describe('Cloud Manager UI, Theme Contrast & Keyboard Ergonomics', () => {
       if (u.includes('/api/v1/status')) {
         return new Response(JSON.stringify({ accounts: [{ id: 'gdrive-1', name: 'GDrive #1', provider: 'gdrive', totalBytes: 1000, usedBytes: 250, freeBytes: 750 }], stats: { totalFiles: 1, activeJobs: 0 } }), { status: 200 });
       }
+      if (u.includes('/api/v1/jobs')) {
+        return new Response(JSON.stringify({ jobs: [{ id: 7, kind: 'rclone_copy', sourcePath: 'demo.pdf', targetRemote: 'gdrive-1', status: 'RUNNING', priority: 50, bytesTotal: 100, bytesDone: 50, updatedAt: 1 }] }), { status: 200 });
+      }
       if (u.includes('/api/v1/rules')) {
         return new Response(JSON.stringify({ rules: [{ id: 1, priority: 10, name: 'Fallback', originMatch: '*', extGlob: '*', targetProvider: 'gdrive', targetRemote: 'gdrive-1', isFallback: true }] }), { status: 200 });
       }
@@ -73,7 +76,12 @@ describe('Cloud Manager UI, Theme Contrast & Keyboard Ergonomics', () => {
     await new Promise((r) => setTimeout(r, 30));
 
     expect(document.getElementById('view-heading')?.textContent).toBe('Virtual File Explorer');
+    expect(document.getElementById('live-progress-card')?.textContent).toContain('demo.pdf');
     expect(document.querySelectorAll('.vtable-row').length).toBeGreaterThan(0);
+
+    document.getElementById('btn-connect-account')?.click();
+    expect(document.getElementById('connect-account-dialog')?.hasAttribute('open')).toBe(true);
+    document.getElementById('connect-account-dialog')?.removeAttribute('open');
 
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true }));
     expect(document.getElementById('command-dialog')?.hasAttribute('open')).toBe(true);

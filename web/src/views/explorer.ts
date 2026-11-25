@@ -2,11 +2,12 @@ import { Virtualizer, elementScroll, observeElementOffset, observeElementRect, t
 import { apiRequest } from '../api';
 import { iconEl } from '../icons';
 import { getSavedDensity } from '../theme';
-import type { CatalogFile } from '../types';
+import type { CatalogFile, Job, TelemetrySnapshot } from '../types';
 import { confirmAction, el, formatBytes, showQuickLookModal, showToast, statusBadge } from '../ui';
 
 export function renderExplorerView(container: HTMLElement): () => void {
   let items: CatalogFile[] = [];
+  let jobs: Job[] = [];
   let total = 0;
   let queryMs = 0;
   let loading = true;
@@ -19,9 +20,75 @@ export function renderExplorerView(container: HTMLElement): () => void {
   let unmountVirtual: (() => void) | null = null;
   let searchTimer: number | undefined;
 
+  const progressCard = el('div', { class: 'card', id: 'live-progress-card' });
   const toolbar = el('div', { class: 'card' });
   const listCard = el('div', { class: 'card' });
-  container.replaceChildren(toolbar, listCard);
+  container.replaceChildren(progressCard, toolbar, listCard);
+
+  const renderProgressCard = (snap?: TelemetrySnapshot) => {
+    const activeTicks = snap?.activeJobs ?? [];
+    const activeSQLJobs = jobs.filter((j) => j.status === 'RUNNING' || j.status === 'QUEUED' || j.status === 'PAUSED');
+    const toggleBtn = el('button', { type: 'button', class: 'btn-secondary btn-sm' }, iconEl('refresh', 14), 'Refresh Queue');
+    toggleBtn.addEventListener('click', () => void fetchJobs());
+
+    progressCard.replaceChildren(
+      el('div', { class: 'card-header' }, el('h2', { class: 'card-title' }, 'Live Transfer & Sync Progress'), toggleBtn),
+    );
+
+    if (activeTicks.length === 0 && activeSQLJobs.length === 0) {
+      progressCard.append(el('p', { class: 'vcell-sub' }, 'Idle — 0 active transfers (daemon sleeping at ~0% CPU until triggered).'));
+      return;
+    }
+
+    const stack = el('div', { class: 'account-stack' });
+    for (const t of activeTicks) {
+      const pct = Math.min(100, Math.round(t.percent || 0));
+      stack.append(
+        el(
+          'div',
+          { class: 'account-card' },
+          el('div', { class: 'account-row' }, el('strong', {}, t.label), el('span', {}, `${pct}% · ${(t.speedBps / (1024 * 1024)).toFixed(1)} MB/s`)),
+          el('div', { class: 'meter' }, el('div', { class: 'meter-fill', style: `width:${pct}%` })),
+        ),
+      );
+    }
+    for (const j of activeSQLJobs.slice(0, 6)) {
+      if (activeTicks.some((t) => t.jobId === j.id)) continue;
+      const pct = j.bytesTotal > 0 ? Math.min(100, Math.round((j.bytesDone / j.bytesTotal) * 100)) : 0;
+      const act = j.status === 'PAUSED' ? 'resume' : 'pause';
+      const btn = el('button', { type: 'button', class: 'btn-secondary btn-sm' }, act === 'pause' ? 'Pause' : 'Resume');
+      btn.addEventListener('click', async () => {
+        await apiRequest('/api/v1/jobs/action', { method: 'POST', body: JSON.stringify({ id: j.id, action: act }) });
+        await fetchJobs();
+      });
+      stack.append(
+        el(
+          'div',
+          { class: 'account-card' },
+          el('div', { class: 'account-row' }, el('span', {}, `${j.kind}: ${j.sourcePath}`), el('span', {}, `${j.status} (${pct}%) `, btn)),
+          el('div', { class: 'meter' }, el('div', { class: 'meter-fill', style: `width:${pct}%` })),
+        ),
+      );
+    }
+    progressCard.append(stack);
+  };
+
+  const fetchJobs = async () => {
+    try {
+      const res = await apiRequest<{ jobs: Job[] }>('/api/v1/jobs');
+      jobs = res.jobs ?? [];
+    } catch {
+      jobs = [];
+    }
+    renderProgressCard();
+  };
+
+  const onTelemetry = (ev: Event) => {
+    renderProgressCard((ev as CustomEvent<TelemetrySnapshot>).detail);
+  };
+  window.addEventListener('cm-telemetry', onTelemetry);
+  renderProgressCard();
+  void fetchJobs();
 
   const searchInput = el('input', {
     id: 'explorer-search',
@@ -373,6 +440,7 @@ export function renderExplorerView(container: HTMLElement): () => void {
 
   return () => {
     window.clearTimeout(searchTimer);
+    window.removeEventListener('cm-telemetry', onTelemetry);
     document.removeEventListener('keydown', onSpacePreview);
     if (unmountVirtual) unmountVirtual();
   };

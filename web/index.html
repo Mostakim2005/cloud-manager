@@ -35,7 +35,10 @@
       <section class="quota-section" aria-labelledby="quota-heading">
         <div class="section-header">
           <h2 id="quota-heading">Storage Pools</h2>
-          <button type="button" class="btn-ghost btn-sm" id="btn-refresh-status" aria-label="Refresh pool quotas">Refresh</button>
+          <div style="display:flex;gap:4px;">
+            <button type="button" class="btn-primary btn-sm" id="btn-connect-account">+ Connect</button>
+            <button type="button" class="btn-ghost btn-sm" id="btn-refresh-status" aria-label="Refresh pool quotas">Refresh</button>
+          </div>
         </div>
         <div id="sidebar-accounts" class="account-stack"></div>
       </section>
@@ -128,6 +131,56 @@
     <form method="dialog" class="dialog-footer">
       <button type="submit" value="cancel" class="btn-secondary" autofocus>Cancel</button>
       <button type="submit" value="confirm" id="confirm-ok-btn" class="btn-danger">Confirm</button>
+    </form>
+  </dialog>
+
+  <!-- Connect Google Drive / Mega / YouTube Account Dialog -->
+  <dialog id="connect-account-dialog" class="cm-dialog cm-dialog-md" closedby="any" aria-labelledby="conn-acc-title">
+    <div class="dialog-header">
+      <h1 id="conn-acc-title">Connect Cloud Account</h1>
+      <form method="dialog"><button type="submit" value="close" class="btn-secondary btn-sm">Esc</button></form>
+    </div>
+    <form id="connect-account-form" class="dialog-body">
+      <div class="account-stack">
+        <div>
+          <label for="acc-provider">Provider</label>
+          <select id="acc-provider" class="select" style="width:100%">
+            <option value="gdrive">Google Drive (Two-Way bisync)</option>
+            <option value="mega">Mega.nz (Append/Archive + hasher)</option>
+            <option value="youtube">YouTube Private Archive</option>
+          </select>
+        </div>
+        <div>
+          <label for="acc-id">Account Slug ID</label>
+          <input id="acc-id" type="text" class="input" style="width:100%" placeholder="e.g. gdrive-2 or mega-2" required pattern="[a-z0-9][a-z0-9_-]{0,63}">
+        </div>
+        <div>
+          <label for="acc-name">Display Label</label>
+          <input id="acc-name" type="text" class="input" style="width:100%" placeholder="e.g. GDrive #2 (Study PDFs)" required>
+        </div>
+        <div>
+          <label for="acc-remote">Rclone Remote Name (optional)</label>
+          <input id="acc-remote" type="text" class="input" style="width:100%" placeholder="e.g. gdrive2:">
+        </div>
+        <div id="acc-mega-fields" hidden>
+          <label for="acc-email">Mega Email</label>
+          <input id="acc-email" type="email" class="input" style="width:100%" autocomplete="off" placeholder="user@example.com">
+          <label for="acc-pass" style="margin-top:8px;display:block;">Mega Password (sealed via DPAPI; never logged)</label>
+          <input id="acc-pass" type="password" class="input" style="width:100%" autocomplete="off">
+        </div>
+        <div id="acc-gdrive-fields">
+          <label for="acc-oauth">Rclone OAuth Token JSON (optional; paste from rclone authorize drive)</label>
+          <textarea id="acc-oauth" class="textarea" rows="2" style="width:100%" placeholder='{"access_token":"..."}'></textarea>
+        </div>
+        <div>
+          <label for="acc-gb">Quota Capacity (GB)</label>
+          <input id="acc-gb" type="number" class="input" style="width:100%" value="15" min="0">
+        </div>
+      </div>
+      <div class="dialog-footer">
+        <button type="button" id="btn-conn-cancel" class="btn-secondary">Cancel</button>
+        <button type="submit" class="btn-primary">Save &amp; Connect</button>
+      </div>
     </form>
   </dialog>
 

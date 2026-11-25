@@ -4,9 +4,9 @@
 ## 1. Project Classification, Stack Lock & Environment
 * **Project Name:** Cloud Manager (`cloud-manager`)
 * **Repository Classification:** **GitHub-Backed Public Repository** (`https://github.com/Mostakim2005/cloud-manager`, `PolyForm Noncommercial License 1.0.0`). GitHub Actions is the authoritative CI/CD runner.
-* **Current State:** **Implemented (Phases 1–4 Complete)** — Go core daemon (`cmd/cloud-managerd`), `--json` CLI (`cmd/cloud-manager`), unified portable Windows entrypoint (`cmd/CloudManager`), TypeScript/Vite Material 3 Tonal UI (`web/`), and GitHub Actions CI/Release workflows (`.github/workflows/ci.yml`, `.github/workflows/release.yml`).
+* **Current State:** **Implemented (Phases 1–4 + Per-User Installer Complete)** — Go core daemon (`cmd/cloud-managerd`), `--json` CLI (`cmd/cloud-manager` including `quit` & `upgrade`), windowless `-H=windowsgui` unified Windows entrypoint (`cmd/CloudManager`), TypeScript/Vite Material 3 Tonal UI (`web/`), per-user Inno Setup installer (`packaging/CloudManager.iss`), and GitHub Actions CI/Release workflows (`.github/workflows/ci.yml`, `.github/workflows/release.yml`).
 * **OSS Reuse Policy:** Custom code is strictly **Go** and **TypeScript/JavaScript**. External tools (`Rclone >= v1.66`, unmodified upstream `Syncthing`, `Kopia`, optional `ADB`, `SQLite 3`) run as Job-Object-supervised adapters; pure-Go `modernc.org/sqlite` provides zero-CGO SQLite WAL + FTS5 + `VACUUM INTO`.
-* **Target Build Output:** Windows 10/11 x64 **portable `.exe`** (`CloudManager.exe`, `cloud-manager.exe`, `cloud-managerd.exe`) delivered via GitHub Actions CI artifacts and tag-triggered (`vX.Y.Z`) releases.
+* **Target Build Output:** Windows 10/11 x64 per-user Inno Setup installer (`CloudManager-Setup.exe`) and standalone portable `.exe` binaries (`CloudManager.exe`, `cloud-manager.exe`, `cloud-managerd.exe`) delivered via GitHub Actions CI artifacts and tag-triggered (`vX.Y.Z`) releases.
 
 ## 2. Ports, Ecosystem Integration & Shared Assets
 * **Loopback Backplane & Control API:** `127.0.0.1:59432` (HTTP + `<= 5 Hz` SSE + `/mcp`, strictly loopback-only; `Authorization: Bearer` / `X-Local-Token` via `%USERPROFILE%\.local\share\ecosystem-secrets.json`, rejecting cross-origin/strict-`Origin` headers with `403` and validating `Host`).
@@ -18,7 +18,8 @@
 * `cmd/` — Go entrypoints (`CloudManager/`, `cloud-manager/`, `cloud-managerd/`).
 * `internal/` — Modular Go backend (`security/`, `config/`, `db/`, `telemetry/`, `routing/`, `ingest/`, `adapters/{rclone,syncthing,adb,lanqr,youtube,kopia}/`, `qrsvg/`, `doctor/`, `tray/`, `webui/`, `server/`, `cli/`).
 * `web/` — TypeScript + Vite Material 3 Tonal frontend (`src/`, `tests/`, `index.html`, `package.json`, `tsconfig.json`, `eslint.config.js`, `vite.config.ts`).
-* `.github/workflows/` — Authoritative CI (`ci.yml` on Linux + Windows) and tag-triggered portable `.exe` release (`release.yml`).
+* `packaging/` — Per-user Inno Setup Windows installer script (`CloudManager.iss`).
+* `.github/workflows/` — Authoritative CI (`ci.yml` on Linux + Windows) and tag-triggered installer + portable `.exe` release (`release.yml`).
 * `docs/` — Living Markdown docs (`PRODUCT.md`, `ARCHITECTURE.md`, `DECISIONS_AND_TRAPS.md`, `modules/implementation-plan.md`). Scan with `grep -A 1 "^### \[" docs/`.
 * `LICENSE` / `THIRD_PARTY_NOTICES.md` / `README.md` / `.gitignore`.
 
@@ -34,4 +35,5 @@
 * **Windows Job Object Trap:** Always attach `rclone rcd`, `syncthing`, `adb`, and `kopia` child processes to a Windows Job Object (`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`).
 * **ADB MediaStore & CRLF Trap:** Execute ADB via Go `exec.Command` argv, strip `\r`, query `images/media` + `video/media` with `relative_path`, and normalize timestamps to UTC seconds.
 * **YouTube OAuth & Quota Traps:** Set OAuth consent to `In Production` (avoid 7-day expiry), track daily PT quota (`9,600 / 10,000` cap, never poll `videos.list`), and persist resumable `Location` URIs.
-* **SQLite WAL, Telemetry & Theme CSP Traps:** Always set `WAL` + `PRAGMA busy_timeout = 5000`, gate schemas via `PRAGMA user_version` + `.bak` snapshots, keep UI progress in memory (`<= 5 Hz` SSE), and keep inline FOUC theme script nonce-protected under strict CSP.
+* **Windows Running-Exe Lock Trap:** Always invoke `cloud-manager quit` before Inno Setup file replacement or rename `.old` during `cloud-manager upgrade`.
+* **SQLite WAL, Telemetry & Theme CSP Traps:** Always set `WAL` + `PRAGMA busy_timeout = 5000`, gate schemas via `PRAGMA user_version` + `.bak` snapshots, keep UI progress in memory (`<= 5 Hz` SSE, paused at `0%` idle CPU when zero clients connected), and keep inline FOUC theme script nonce-protected under strict CSP.

@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -13,9 +14,27 @@ import (
 	"github.com/Mostakim2005/cloud-manager/internal/tray"
 )
 
+// ProbeRunningDaemon returns true if an active Cloud Manager daemon is already serving bindAddr.
+func ProbeRunningDaemon(bindAddr string) bool {
+	client := &http.Client{Timeout: 450 * time.Millisecond}
+	resp, err := client.Get("http://" + bindAddr + "/api/v1/health")
+	if err != nil {
+		return false
+	}
+	_ = resp.Body.Close()
+	return resp.StatusCode == http.StatusOK
+}
+
 // RunForegroundDaemon starts the authenticated loopback daemon, optional system tray,
-// and blocks until SIGINT/SIGTERM or tray Quit.
+// and handles single-instance wake when already running.
 func RunForegroundDaemon(bindAddr string, openUI, noTray bool, uiDir string) int {
+	if ProbeRunningDaemon(bindAddr) {
+		if openUI {
+			_ = tray.OpenBrowser("http://" + bindAddr)
+		}
+		return 0
+	}
+
 	paths := config.DiscoverPaths("")
 	settings, err := config.LoadOrInitSettings(paths)
 	if err != nil {
@@ -42,6 +61,14 @@ func RunForegroundDaemon(bindAddr string, openUI, noTray bool, uiDir string) int
 	}
 	daemon.UIOverride = uiDir
 
+	quitCh := make(chan struct{}, 1)
+	daemon.OnShutdownRequest = func() {
+		select {
+		case quitCh <- struct{}{}:
+		default:
+		}
+	}
+
 	url, err := daemon.Start(bindAddr)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "daemon bind error: %v\n", err)
@@ -54,7 +81,6 @@ func RunForegroundDaemon(bindAddr string, openUI, noTray bool, uiDir string) int
 		_ = tray.OpenBrowser(url)
 	}
 
-	quitCh := make(chan struct{}, 1)
 	var trayCtrl *tray.Controller
 	if !noTray {
 		trayCtrl = tray.Start(tray.Callbacks{

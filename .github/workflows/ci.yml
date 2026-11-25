@@ -77,7 +77,7 @@ jobs:
           set -o pipefail
           cd web && npm audit --audit-level=high 2>&1 | tee ../.ci-logs/07-build-windows.log || true
           cd ..
-          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o build/CloudManager.exe ./cmd/CloudManager 2>&1 | tee -a .ci-logs/07-build-windows.log
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w -H=windowsgui" -o build/CloudManager.exe ./cmd/CloudManager 2>&1 | tee -a .ci-logs/07-build-windows.log
           CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o build/cloud-manager.exe ./cmd/cloud-manager 2>&1 | tee -a .ci-logs/07-build-windows.log
           CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o build/cloud-managerd.exe ./cmd/cloud-managerd 2>&1 | tee -a .ci-logs/07-build-windows.log
           ls -lh build/*.exe | tee -a .ci-logs/07-build-windows.log
@@ -204,17 +204,34 @@ jobs:
           go test -v ./cmd/... ./internal/... 2>&1 | Tee-Object -FilePath .ci-logs\win-03-go-tests.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Build Windows Executables & CLI Smoke Tests
+      - name: Build Windows Executables, Installer & CLI Smoke Tests
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $env:CGO_ENABLED = '0'
-          go build -trimpath -ldflags="-s -w" -o build\CloudManager.exe .\cmd\CloudManager
+          go build -trimpath -ldflags="-s -w -H=windowsgui" -o build\CloudManager.exe .\cmd\CloudManager
           go build -trimpath -ldflags="-s -w" -o build\cloud-manager.exe .\cmd\cloud-manager
+          go build -trimpath -ldflags="-s -w" -o build\cloud-managerd.exe .\cmd\cloud-managerd
           .\build\cloud-manager.exe health --json | Tee-Object -FilePath .ci-logs\win-04-smoke.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           .\build\cloud-manager.exe route test lecture.mp4 --origin recordings --json | Tee-Object -FilePath .ci-logs\win-04-smoke.log -Append
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          .\build\cloud-manager.exe upgrade --dry-run --json | Tee-Object -FilePath .ci-logs\win-04-smoke.log -Append
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup -y --no-progress | Out-Null
+          }
+          & $iscc packaging\CloudManager.iss | Tee-Object -FilePath .ci-logs\win-05-installer.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload Windows Installer Artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloud-manager-windows-installer
+          path: build/CloudManager-Setup.exe
+          retention-days: 14
 
       - name: Generate Windows CI failure report
         if: failure()

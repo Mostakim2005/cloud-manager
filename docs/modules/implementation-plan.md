@@ -25,5 +25,5 @@
 
 ## Verification Gates (Executed in GitHub Actions)
 1. Linux CI (`ubuntu-latest`): `gofmt`, `go vet ./...`, `npm run lint`, `npx tsc --noEmit`, `npm test`, `npm run build`, `go test -race -v ./...`, `GOOS=windows GOARCH=amd64 go build`, and doc/BOM parity checks.
-2. Windows CI (`windows-latest`): Native `go test -v ./...` (real Windows DPAPI, Job Objects, NTFS paths) + `.exe` CLI smoke checks (`health --json`, `route test --json`).
-3. Post-CI User-Path Binary Install: Download verified Windows `.exe` artifacts from the passing GitHub Actions run into `%USERPROFILE%\.local\bin\`.
+2. Windows CI (`windows-latest`): Native `go test -v ./...` (real Windows DPAPI, Job Objects, NTFS paths), `.exe` CLI smoke checks (`health --json`, `route test --json`, `upgrade --dry-run --json`), and Inno Setup `ISCC.exe` compilation of `packaging/CloudManager.iss` (`CloudManager-Setup.exe`).
+3. Post-CI User-Path & Installer Setup: Run `CloudManager-Setup.exe` per-user (zero UAC) to install to `%LOCALAPPDATA%\Programs\CloudManager\` and `%USERPROFILE%\.local\bin\`, register Desktop + Start Menu shortcuts + Windows `Run` `--background` auto-start, and enable interactive UI account connection (`#connect-account-dialog`) and `#live-progress-card` transfer monitoring.

@@ -772,6 +772,19 @@ func (s *Store) ListAccounts() ([]Account, error) {
 	return out, rows.Err()
 }
 
+// DeleteAccount removes an account by id.
+func (s *Store) DeleteAccount(id string) error {
+	res, err := s.db.Exec(`DELETE FROM accounts WHERE id = ?`, id)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return errors.New("account not found")
+	}
+	return nil
+}
+
 // InsertRoutingRule creates a routing rule.
 func (s *Store) InsertRoutingRule(r RoutingRule) (int64, error) {
 	res, err := s.db.Exec(`

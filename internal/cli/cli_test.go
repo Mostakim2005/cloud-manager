@@ -51,4 +51,12 @@ func TestCLIJSONContractAndExitCodes(t *testing.T) {
 	if code != ExitOfflineDep {
 		t.Fatalf("expected ExitOfflineDep (3) when daemon offline, got %d", code)
 	}
+
+	// Exit 0 for quit --json when daemon is already offline.
+	out.Reset()
+	errBuf.Reset()
+	code = Run([]string{"quit", "--json"}, strings.NewReader(""), &out, &errBuf)
+	if code != ExitOK || !strings.Contains(out.String(), "alreadyOffline") {
+		t.Fatalf("expected ExitOK alreadyOffline for quit --json, got %d (%s)", code, out.String())
+	}
 }

@@ -96,3 +96,12 @@ flowchart LR
 ### [TRAP: SQLite-Multi-Thread-Busy-Timeout] | Aliases: database locked, sqlite busy, ui freeze, progress wal thrash
 > **1-Line Summary:** NEVER open SQLite without `WAL` + `PRAGMA busy_timeout = 5000`, and NEVER flush per-chunk progress bars into SQLite on every tick.
 * **Strict Rule:** Stream live metrics from memory (`<= 5 Hz` SSE via `telemetry.Hub`), persist only discrete job state transitions, and guard schema changes with `PRAGMA user_version` + rolling `.bak` snapshots (`db.Open`).
+
+### [DECISION: Windowless-Tray-Auto-Start-And-Per-User-Inno-Installer] | Aliases: windowsgui, inno setup, background autostart, single instance, self upgrade
+> **1-Line Summary:** Built `CloudManager.exe` with `-H=windowsgui` + `--background`, single-instance browser wake, demand-driven `0%` idle telemetry, `cloud-manager quit`/`upgrade`, and a zero-admin per-user Inno Setup installer (`CloudManager-Setup.exe`).
+* **Decision Maker:** `[DECIDED BY: HUMAN]`
+* **Rationale:** Regular background usage requires zero-console startup at Windows sign-in, Desktop/Start Menu shortcuts without UAC elevation, near-zero idle CPU when no UI tab is viewing `:59432`, and effortless 1-command self-upgrades (`cloud-manager upgrade`) or installer updates.
+
+### [TRAP: Windows-Running-Exe-Lock-During-Upgrade] | Aliases: locked exe upgrade, inno setup restart, self update swap
+> **1-Line Summary:** NEVER overwrite a running Windows `.exe` in place during an upgrade or uninstall—Windows blocks direct writes on mapped binaries even without an open console window.
+* **Strict Rule:** Gracefully stop the background daemon via `POST /api/v1/shutdown` / `cloud-manager quit` before Inno Setup replacement (`PrepareToInstall`/`CurUninstallStepChanged`), and perform safe NTFS `.old` rename-swap + `--background` relaunch inside `cli.runUpgrade`.

@@ -7,14 +7,15 @@ Unified multi-cloud storage pooler, deterministic smart router, two-way Wi-Fi/AD
 
 ## Architecture Overview
 
-* **Go Core Daemon & CLI:** `cmd/cloud-managerd`, `cmd/cloud-manager`, and single-binary portable `cmd/CloudManager` serving an embedded TypeScript UI, authenticated loopback HTTP + SSE (`<= 5 Hz`) + Streamable `/mcp` on `127.0.0.1:59432`, and Windows System Tray (`internal/tray`).
+* **Go Core Daemon & CLI:** `cmd/cloud-managerd`, `cmd/cloud-manager`, and windowless (`-H=windowsgui`) `cmd/CloudManager` supporting silent `--background` Windows sign-in startup, single-instance browser wake, demand-driven `0%` idle SSE telemetry (`<= 5 Hz` only when UI tabs are connected), authenticated loopback HTTP + Streamable `/mcp` on `127.0.0.1:59432`, and Windows System Tray (`internal/tray`).
+* **Per-User Windows Installer & Self-Upgrade:** Zero-admin Inno Setup installer (`packaging/CloudManager.iss` -> `CloudManager-Setup.exe`) installing Start Menu & Desktop shortcuts, `HKCU\...\Run` silent auto-start, and `cloud-manager://` URI registration, plus `cloud-manager upgrade` and `cloud-manager quit`.
 * **Supervised External Adapters:** Job-Object-bound wrappers (`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`) for `rclone rcd` (`>= v1.66` with `hasher` Mega Append/Archive), unmodified upstream `Syncthing` LAN-Only REST API, `ADB` Wireless QR / USB MediaStore (`\r\r\n` & UTC second normalization), `Kopia` FastCDC block-delta snapshots, opt-in Browser QR Drop-Zone (`https://<lan-ip>:53317` + 6-digit PIN, OFF by default), and Go YouTube Data API v3 private resumable uploader (`16 MiB` chunks, `9,600 / 10,000` PT quota ledger).
 
 ## UI Surface Inventory
 
 | Surface | Entry Point / Shortcut | Capabilities |
 | :--- | :--- | :--- |
-| **Virtual File Explorer** | `Ctrl+1` | `@tanstack/virtual-core` 60 FPS virtual table, `< 5 ms` SQLite FTS5 search (`/` or `Ctrl+F`), pool filter chips + Reset, sortable columns, `Space` Quick-Look `<dialog>`, `Comfortable`/`Compact` density, soft-delete 30-day quarantine |
+| **Virtual File Explorer** | `Ctrl+1` | `@tanstack/virtual-core` 60 FPS virtual table, `< 5 ms` SQLite FTS5 search (`/` or `Ctrl+F`), pool filter chips + Reset, sidebar `+ Connect` Google Drive / Mega / YouTube account modal & disconnect, `#live-progress-card` real-time transfer queue with Pause/Resume, sortable columns, `Space` Quick-Look `<dialog>`, `Comfortable`/`Compact` density, soft-delete 30-day quarantine |
 | **Smart Routing & Simulator** | `Ctrl+2` | Priority `ASC` (`first-match-wins`) rules, Show/Hide rule creator, drag-and-drop + accessible file picker Dry-Run Simulator (`500 MiB` spillover + bandwidth schedule) |
 | **Phone Delta Sync** | `Ctrl+3` | Syncthing LAN-Only QR + per-folder Scan/Pause/Resume + `RAG Manager :27130` webhook indicator, Wireless/USB ADB QR + MediaStore delta scan, Opt-In Browser QR Drop-Zone `:53317` toggle & PIN |
 | **YouTube Private Pipeline** | `Ctrl+4` | Forced `privacyStatus=private` queue, `16 MiB` resumable chunk progress, Pacific Time daily quota bar (`9,600 / 10,000`) |
@@ -30,6 +31,8 @@ All CLI verbs emit single JSON objects on `stdout` (`--json`) and diagnostics on
 cloud-manager health --json
 cloud-manager doctor --json
 cloud-manager status --json
+cloud-manager quit --json
+cloud-manager upgrade --dry-run --json
 cloud-manager pool quota --json
 cloud-manager pool duplicates --json
 cloud-manager route test lecture.mp4 --origin recordings --size 52428800 --json
@@ -38,9 +41,10 @@ cloud-manager lan enable --json
 cloud-manager youtube queue "D:\Videos\clip.mp4" --playlist PL_ID --dry-run --json
 ```
 
-## CI & Portable Release Builds
+## CI, Installer & Portable Release Builds
 
 Verification runs automatically in GitHub Actions (`.github/workflows/ci.yml` on both `ubuntu-latest` and `windows-latest`):
-* **Go:** `gofmt`, `go vet ./...`, `go test -race ./...`, `CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build`
+* **Go:** `gofmt`, `go vet ./...`, `go test -race ./...`, `CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build` (`-H=windowsgui` for `CloudManager.exe`)
 * **TypeScript UI:** `npm run lint`, `npx tsc --noEmit`, `npm test`, `npm run build`
-* **Tag Releases (`vX.Y.Z`):** `.github/workflows/release.yml` publishes `CloudManager.exe`, `cloud-manager.exe`, `cloud-managerd.exe`, and `SHA256SUMS.txt`.
+* **Windows Installer:** `ISCC.exe` compiles `packaging/CloudManager.iss` into `CloudManager-Setup.exe`
+* **Tag Releases (`vX.Y.Z`):** `.github/workflows/release.yml` publishes `CloudManager-Setup.exe`, `CloudManager.exe`, `cloud-manager.exe`, `cloud-managerd.exe`, and `SHA256SUMS.txt`.

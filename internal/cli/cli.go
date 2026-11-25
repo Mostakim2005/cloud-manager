@@ -9,7 +9,9 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -62,6 +64,10 @@ func Run(args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) int
 		return runYouTube(rest, paths, settings, secrets, stdout, stderr)
 	case "open-uri":
 		return runOpenURI(rest, stdout, stderr)
+	case "quit":
+		return runQuit(rest, secrets, stdout, stderr)
+	case "upgrade":
+		return runUpgrade(rest, secrets, stdout, stderr)
 	default:
 		emitError(stderr, stdout, hasJSONFlag(rest), ExitInvalidArg, fmt.Sprintf("unknown command %q", cmd))
 		return ExitInvalidArg
@@ -436,6 +442,145 @@ func runOpenURI(args []string, stdout, stderr io.Writer) int {
 	return ExitOK
 }
 
+func runQuit(args []string, secrets *config.EcosystemSecrets, stdout, stderr io.Writer) int {
+	asJSON := hasJSONFlag(args)
+	resp, body, code := callDaemon(http.MethodPost, "/api/v1/shutdown", []byte(`{}`), secrets)
+	if code == ExitOfflineDep {
+		if asJSON {
+			emitJSON(stdout, map[string]any{"ok": true, "alreadyOffline": true})
+		} else {
+			fmt.Fprintln(stderr, "Cloud Manager daemon is already offline.")
+		}
+		return ExitOK
+	}
+	if code != ExitOK || (resp != nil && resp.StatusCode >= 400) {
+		emitError(stderr, stdout, asJSON, ExitRuntime, string(body))
+		return ExitRuntime
+	}
+	// Wait briefly until loopback port releases so installer/upgrade file swaps succeed immediately.
+	healthURL := fmt.Sprintf("http://%s:%d/api/v1/health", config.DefaultBindHost, config.DefaultPort)
+	hc := &http.Client{Timeout: 250 * time.Millisecond}
+	for i := 0; i < 15; i++ {
+		r, err := hc.Get(healthURL)
+		if err != nil {
+			break
+		}
+		_ = r.Body.Close()
+		time.Sleep(150 * time.Millisecond)
+	}
+	if asJSON {
+		emitJSON(stdout, map[string]any{"ok": true, "stopped": true})
+	} else {
+		fmt.Fprintln(stderr, "Cloud Manager daemon stopped cleanly.")
+	}
+	return ExitOK
+}
+
+func runUpgrade(args []string, secrets *config.EcosystemSecrets, stdout, stderr io.Writer) int {
+	asJSON := hasJSONFlag(args)
+	fs := flag.NewFlagSet("upgrade", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	source := fs.String("source", "ci", "")
+	dry := fs.Bool("dry-run", false, "")
+	_ = fs.Bool("json", false, "")
+	if _, err := parseFlexibleFlags(fs, stripGlobalFlags(args), map[string]bool{"source": true}); err != nil {
+		emitError(stderr, stdout, asJSON, ExitInvalidArg, "usage: upgrade [--source ci|release] [--dry-run] [--json]")
+		return ExitInvalidArg
+	}
+	if *source != "ci" && *source != "release" {
+		emitError(stderr, stdout, asJSON, ExitInvalidArg, "source must be 'ci' or 'release'")
+		return ExitInvalidArg
+	}
+	ghBin, err := exec.LookPath("gh")
+	if err != nil {
+		emitError(stderr, stdout, asJSON, ExitOfflineDep, "GitHub CLI (gh) is required on PATH for cloud-manager upgrade")
+		return ExitOfflineDep
+	}
+
+	home, _ := os.UserHomeDir()
+	localBin := filepath.Join(home, ".local", "bin")
+	if *dry {
+		emitJSON(stdout, map[string]any{
+			"ok":         true,
+			"dryRun":     true,
+			"source":     *source,
+			"ghPath":     ghBin,
+			"targetDir":  localBin,
+			"repo":       "Mostakim2005/cloud-manager",
+			"restartCmd": "CloudManager.exe --background",
+		})
+		return ExitOK
+	}
+
+	tmpDir, err := os.MkdirTemp("", "cloud-manager-upgrade-*")
+	if err != nil {
+		emitError(stderr, stdout, asJSON, ExitRuntime, err.Error())
+		return ExitRuntime
+	}
+	defer os.RemoveAll(tmpDir)
+
+	if *source == "release" {
+		cmd := exec.Command(ghBin, "release", "download", "--repo", "Mostakim2005/cloud-manager", "--pattern", "*.exe", "--dir", tmpDir)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			emitError(stderr, stdout, asJSON, ExitOfflineDep, fmt.Sprintf("gh release download failed: %v (%s)", err, strings.TrimSpace(string(out))))
+			return ExitOfflineDep
+		}
+	} else {
+		idOut, err := exec.Command(ghBin, "run", "list", "--repo", "Mostakim2005/cloud-manager", "--branch", "main", "--status", "success", "--limit", "1", "--json", "databaseId", "--jq", ".[0].databaseId").Output()
+		runID := strings.TrimSpace(string(idOut))
+		if err != nil || runID == "" {
+			emitError(stderr, stdout, asJSON, ExitOfflineDep, "no passing GitHub Actions CI run found")
+			return ExitOfflineDep
+		}
+		if out, err := exec.Command(ghBin, "run", "download", runID, "--repo", "Mostakim2005/cloud-manager", "--name", "cloud-manager-windows-binaries", "--dir", tmpDir).CombinedOutput(); err != nil {
+			emitError(stderr, stdout, asJSON, ExitRuntime, fmt.Sprintf("gh run download failed: %v (%s)", err, strings.TrimSpace(string(out))))
+			return ExitRuntime
+		}
+	}
+
+	// Stop background daemon cleanly before replacing executables.
+	_ = runQuit([]string{}, secrets, io.Discard, io.Discard)
+
+	targetDirs := []string{localBin}
+	if localApp := os.Getenv("LOCALAPPDATA"); localApp != "" {
+		progDir := filepath.Join(localApp, "Programs", "CloudManager")
+		if _, serr := os.Stat(progDir); serr == nil {
+			targetDirs = append(targetDirs, progDir)
+		}
+	}
+
+	updated := []string{}
+	for _, binName := range []string{"CloudManager.exe", "cloud-manager.exe", "cloud-managerd.exe"} {
+		src := filepath.Join(tmpDir, binName)
+		raw, rerr := os.ReadFile(src)
+		if rerr != nil {
+			continue
+		}
+		for _, dir := range targetDirs {
+			_ = os.MkdirAll(dir, 0o755)
+			dst := filepath.Join(dir, binName)
+			_ = os.Remove(dst + ".old")
+			_ = os.Rename(dst, dst+".old") // Windows NTFS permits renaming a running .exe
+			if werr := os.WriteFile(dst, raw, 0o755); werr != nil {
+				emitError(stderr, stdout, asJSON, ExitRuntime, fmt.Sprintf("write %s: %v", dst, werr))
+				return ExitRuntime
+			}
+			_ = os.Remove(dst + ".old")
+			updated = append(updated, dst)
+		}
+	}
+
+	// Restart windowless background tray daemon automatically on Windows.
+	if runtime.GOOS == "windows" {
+		launcher := filepath.Join(localBin, "CloudManager.exe")
+		if _, err := os.Stat(launcher); err == nil {
+			_ = exec.Command(launcher, "--background").Start()
+		}
+	}
+	emitJSON(stdout, map[string]any{"ok": true, "source": *source, "updated": updated})
+	return ExitOK
+}
+
 func callDaemon(method, path string, body []byte, secrets *config.EcosystemSecrets) (*http.Response, []byte, int) {
 	u := fmt.Sprintf("http://%s:%d%s", config.DefaultBindHost, config.DefaultPort, path)
 	var r io.Reader
@@ -529,5 +674,7 @@ Commands:
   sync <run|app --app <slug>> [--dry-run] [--json]
   lan <status|enable|disable> [--json]
   youtube <quota|queue <file>> [--dry-run] [--json]
-  open-uri <cloud-manager://...>`)
+  open-uri <cloud-manager://...>
+  quit [--json]
+  upgrade [--source ci|release] [--dry-run] [--json]`)
 }

@@ -35,7 +35,8 @@ type Snapshot struct {
 	AdapterStates map[string]bool `json:"adapterStates"`
 }
 
-// Hub maintains bounded in-memory telemetry and pushes throttled <= 5 Hz snapshots to SSE clients.
+// Hub maintains bounded in-memory telemetry and pushes <= 5 Hz snapshots to SSE clients.
+// When zero SSE subscribers are connected, no periodic ticker runs (0% idle CPU).
 type Hub struct {
 	mu          sync.Mutex
 	ring        []Event
@@ -44,17 +45,19 @@ type Hub struct {
 	adapters    map[string]bool
 	subs        map[chan Snapshot]struct{}
 	dirty       bool
+	wakeCh      chan struct{}
 	stopCh      chan struct{}
 	minInterval time.Duration
 }
 
-// NewHub initializes the telemetry ring buffer and <= 5 Hz broadcast ticker.
+// NewHub initializes the telemetry ring buffer and demand-driven <= 5 Hz broadcast loop.
 func NewHub() *Hub {
 	h := &Hub{
 		ringCap:     250,
 		active:      make(map[int64]TransferTick),
 		adapters:    make(map[string]bool),
 		subs:        make(map[chan Snapshot]struct{}),
+		wakeCh:      make(chan struct{}, 1),
 		stopCh:      make(chan struct{}),
 		minInterval: 200 * time.Millisecond, // Strictly <= 5 Hz
 	}
@@ -63,15 +66,42 @@ func NewHub() *Hub {
 }
 
 func (h *Hub) loop() {
-	t := time.NewTicker(h.minInterval)
-	defer t.Stop()
+	var ticker *time.Ticker
+	var tickCh <-chan time.Time
+	defer func() {
+		if ticker != nil {
+			ticker.Stop()
+		}
+	}()
+
 	for {
 		select {
 		case <-h.stopCh:
 			return
-		case <-t.C:
+		case <-h.wakeCh:
 			h.mu.Lock()
-			if !h.dirty || len(h.subs) == 0 {
+			hasSubs := len(h.subs) > 0
+			h.mu.Unlock()
+			if hasSubs && ticker == nil {
+				ticker = time.NewTicker(h.minInterval)
+				tickCh = ticker.C
+			} else if !hasSubs && ticker != nil {
+				ticker.Stop()
+				ticker = nil
+				tickCh = nil
+			}
+		case <-tickCh:
+			h.mu.Lock()
+			if len(h.subs) == 0 {
+				if ticker != nil {
+					ticker.Stop()
+					ticker = nil
+					tickCh = nil
+				}
+				h.mu.Unlock()
+				continue
+			}
+			if !h.dirty {
 				h.mu.Unlock()
 				continue
 			}
@@ -93,7 +123,14 @@ func (h *Hub) loop() {
 	}
 }
 
-// Close shuts down the telemetry ticker cleanly.
+func (h *Hub) signalWake() {
+	select {
+	case h.wakeCh <- struct{}{}:
+	default:
+	}
+}
+
+// Close shuts down the telemetry loop cleanly.
 func (h *Hub) Close() {
 	select {
 	case <-h.stopCh:
@@ -115,7 +152,9 @@ func (h *Hub) Emit(ev Event) {
 	} else {
 		h.ring = append(h.ring, ev)
 	}
-	h.dirty = true
+	if len(h.subs) > 0 {
+		h.dirty = true
+	}
 }
 
 // UpdateTransfer updates an in-flight job progress tick in memory without touching SQLite.
@@ -130,7 +169,9 @@ func (h *Hub) UpdateTransfer(tick TransferTick) {
 		}
 		h.active[tick.JobID] = tick
 	}
-	h.dirty = true
+	if len(h.subs) > 0 {
+		h.dirty = true
+	}
 }
 
 // SetAdapterState updates live availability for an adapter.
@@ -138,7 +179,9 @@ func (h *Hub) SetAdapterState(name string, online bool) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.adapters[name] = online
-	h.dirty = true
+	if len(h.subs) > 0 {
+		h.dirty = true
+	}
 }
 
 // Snapshot returns the current telemetry snapshot.
@@ -172,13 +215,14 @@ func (h *Hub) snapshotLocked() Snapshot {
 	}
 }
 
-// Subscribe registers a client SSE channel and returns an unsubscribe function.
+// Subscribe registers a client SSE channel and wakes the <= 5 Hz ticker on demand.
 func (h *Hub) Subscribe() (<-chan Snapshot, func()) {
 	ch := make(chan Snapshot, 8)
 	h.mu.Lock()
 	h.subs[ch] = struct{}{}
 	snap := h.snapshotLocked()
 	h.mu.Unlock()
+	h.signalWake()
 
 	select {
 	case ch <- snap:
@@ -189,5 +233,6 @@ func (h *Hub) Subscribe() (<-chan Snapshot, func()) {
 		h.mu.Lock()
 		delete(h.subs, ch)
 		h.mu.Unlock()
+		h.signalWake()
 	}
 }

@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -36,27 +37,28 @@ import (
 
 // Daemon aggregates all Cloud Manager subsystems behind the authenticated 127.0.0.1:59432 server.
 type Daemon struct {
-	mu         sync.RWMutex
-	Paths      config.Paths
-	Settings   config.Settings
-	Secrets    *config.EcosystemSecrets
-	Store      *db.Store
-	Hub        *telemetry.Hub
-	Logger     *config.Logger
-	Tracker    *routing.QuotaReservationTracker
-	Pipeline   *ingest.Pipeline
-	Rclone     *rclone.Supervisor
-	Syncthing  *syncthing.Client
-	ADB        *adb.Client
-	LANQR      *lanqr.Server
-	YouTube    *youtube.Uploader
-	Kopia      *kopia.Bridge
-	JobSup     *security.JobSupervisor
-	UIToken    string
-	Port       int
-	UIOverride string
-	srv        *http.Server
-	ln         net.Listener
+	mu                sync.RWMutex
+	Paths             config.Paths
+	Settings          config.Settings
+	Secrets           *config.EcosystemSecrets
+	Store             *db.Store
+	Hub               *telemetry.Hub
+	Logger            *config.Logger
+	Tracker           *routing.QuotaReservationTracker
+	Pipeline          *ingest.Pipeline
+	Rclone            *rclone.Supervisor
+	Syncthing         *syncthing.Client
+	ADB               *adb.Client
+	LANQR             *lanqr.Server
+	YouTube           *youtube.Uploader
+	Kopia             *kopia.Bridge
+	JobSup            *security.JobSupervisor
+	UIToken           string
+	Port              int
+	UIOverride        string
+	OnShutdownRequest func()
+	srv               *http.Server
+	ln                net.Listener
 }
 
 // NewDaemon initializes all components cleanly (ready for HTTP ListenAndServe or httptest).
@@ -206,6 +208,7 @@ func (d *Daemon) Handler() http.Handler {
 	// Machine-to-machine endpoints: strict no-Origin (ANY Origin -> 403) + Bearer auth required.
 	mux.HandleFunc("/mcp", d.withGuard(true, true, d.handleMCP))
 	mux.HandleFunc("/api/v1/sync", d.withGuard(true, true, d.handleAppBackplaneSync))
+	mux.HandleFunc("/api/v1/shutdown", d.withGuard(true, true, d.handleShutdown))
 
 	// Authenticated API routes (UI + CLI + scripts).
 	mux.HandleFunc("/api/v1/status", d.withGuard(false, true, d.handleStatus))
@@ -451,13 +454,124 @@ func (d *Daemon) handleCatalogDelete(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"tombstone": tomb})
 }
 
-func (d *Daemon) handleAccounts(w http.ResponseWriter, _ *http.Request) {
-	accounts, err := d.Store.ListAccounts()
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
+func (d *Daemon) handleShutdown(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeErr(w, http.StatusMethodNotAllowed, "POST required")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"accounts": accounts})
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "shuttingDown": true})
+	if d.OnShutdownRequest != nil {
+		go func() {
+			time.Sleep(50 * time.Millisecond)
+			d.OnShutdownRequest()
+		}()
+	}
+}
+
+func (d *Daemon) handleAccounts(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		accounts, err := d.Store.ListAccounts()
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"accounts": accounts})
+	case http.MethodPost:
+		var req struct {
+			ID             string `json:"id"`
+			Name           string `json:"name"`
+			Provider       string `json:"provider"`
+			RcloneRemote   string `json:"rcloneRemote"`
+			Email          string `json:"email"`
+			Password       string `json:"password"`
+			OAuthTokenJSON string `json:"oauthTokenJson"`
+			TotalGB        int64  `json:"totalGb"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeErr(w, http.StatusBadRequest, "invalid json")
+			return
+		}
+		if !security.ValidateAppSlug(req.ID) {
+			writeErr(w, http.StatusBadRequest, "valid account id slug required (lowercase a-z, 0-9, -, _)")
+			return
+		}
+		if req.Provider != "gdrive" && req.Provider != "mega" && req.Provider != "youtube" {
+			writeErr(w, http.StatusBadRequest, "provider must be gdrive, mega, or youtube")
+			return
+		}
+		if req.Name == "" {
+			req.Name = req.ID
+		}
+		remote := strings.TrimSpace(req.RcloneRemote)
+		if remote == "" {
+			remote = req.ID + ":"
+		} else if req.Provider != "youtube" && !strings.HasSuffix(remote, ":") {
+			remote += ":"
+		}
+
+		var hasherRemote string
+		health := "configured"
+		if req.Provider == "mega" {
+			baseRemote := strings.TrimSuffix(remote, ":")
+			hasherName := baseRemote + "-hasher"
+			hasherRemote = hasherName + ":"
+			if req.Email != "" && req.Password != "" {
+				if bin, err := exec.LookPath("rclone"); err == nil {
+					_ = exec.CommandContext(r.Context(), bin, "config", "create", baseRemote, "mega", "user="+req.Email, "pass="+req.Password, "--config="+d.Paths.RcloneConfPath, "--non-interactive").Run()
+				}
+			}
+			_ = rclone.EnsureMegaHasherConfig(d.Paths.RcloneConfPath, baseRemote, hasherName)
+		} else if req.Provider == "gdrive" && req.OAuthTokenJSON != "" {
+			baseRemote := strings.TrimSuffix(remote, ":")
+			if bin, err := exec.LookPath("rclone"); err == nil {
+				_ = exec.CommandContext(r.Context(), bin, "config", "create", baseRemote, "drive", "token="+req.OAuthTokenJSON, "--config="+d.Paths.RcloneConfPath, "--non-interactive").Run()
+			}
+		}
+
+		totalBytes := req.TotalGB * 1024 * 1024 * 1024
+		if totalBytes <= 0 && req.Provider == "gdrive" {
+			totalBytes = 15 * 1024 * 1024 * 1024
+		} else if totalBytes <= 0 && req.Provider == "mega" {
+			totalBytes = 20 * 1024 * 1024 * 1024
+		}
+		acc := db.Account{
+			ID:           req.ID,
+			Name:         req.Name,
+			Provider:     req.Provider,
+			RcloneRemote: remote,
+			HasherRemote: hasherRemote,
+			TotalBytes:   totalBytes,
+			FreeBytes:    totalBytes,
+			Health:       health,
+			UpdatedAt:    time.Now().UTC().Unix(),
+		}
+		if err := d.Store.UpsertAccount(acc); err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if d.Logger != nil {
+			d.Logger.Log("info", "accounts", "account connected", map[string]any{
+				"id":       acc.ID,
+				"provider": acc.Provider,
+				"remote":   acc.RcloneRemote,
+			})
+		}
+		writeJSON(w, http.StatusCreated, map[string]any{"account": acc})
+	case http.MethodDelete:
+		id := r.URL.Query().Get("id")
+		if !security.ValidateAppSlug(id) {
+			writeErr(w, http.StatusBadRequest, "valid id required")
+			return
+		}
+		if err := d.Store.DeleteAccount(id); err != nil {
+			writeErr(w, http.StatusNotFound, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"deleted": id})
+	default:
+		writeErr(w, http.StatusMethodNotAllowed, "GET, POST, or DELETE required")
+	}
 }
 
 func (d *Daemon) handleDuplicates(w http.ResponseWriter, _ *http.Request) {

@@ -5,6 +5,7 @@ import { iconEl, type IconName } from './icons';
 import { applyDensity, applyTheme, getSavedDensity, getSavedTheme, initThemeListeners } from './theme';
 import type { Account, TelemetrySnapshot, ViewId } from './types';
 import { el, formatBytes, openModalDialog, showToast } from './ui';
+import { confirmAction } from './ui';
 import { renderBackplaneView } from './views/backplane';
 import { renderExplorerView } from './views/explorer';
 import { renderPhoneView } from './views/phone';
@@ -79,11 +80,19 @@ export function bootstrapApp(): () => void {
       for (const a of res.accounts ?? []) {
         const pct = a.totalBytes > 0 ? Math.min(100, Math.round((a.usedBytes / a.totalBytes) * 100)) : 0;
         const label = a.provider === 'youtube' ? 'Private Quota' : `${formatBytes(a.usedBytes)} / ${formatBytes(a.totalBytes)}`;
+        const removeBtn = el('button', { type: 'button', class: 'btn-ghost btn-sm', 'aria-label': `Remove ${a.name}`, title: `Disconnect ${a.name}` }, '×');
+        removeBtn.addEventListener('click', async () => {
+          if (await confirmAction('Disconnect Storage Account?', `Remove "${a.name}" (${a.provider}) from Cloud Manager pools? Local files stay untouched.`, 'Disconnect')) {
+            await apiRequest(`/api/v1/accounts?id=${encodeURIComponent(a.id)}`, { method: 'DELETE' });
+            showToast(`Disconnected ${a.name}.`);
+            await renderSidebarAccounts();
+          }
+        });
         stack.append(
           el(
             'div',
             { class: 'account-card' },
-            el('div', { class: 'account-row' }, el('span', {}, a.name), el('strong', {}, label)),
+            el('div', { class: 'account-row' }, el('span', {}, `${a.name} (${a.health || 'ready'})`), el('span', { style: 'display:inline-flex;align-items:center;gap:4px;' }, el('strong', {}, label), removeBtn)),
             el('div', { class: 'meter' }, el('div', { class: `meter-fill${pct > 85 ? ' warn' : ''}`, style: `width:${pct}%` })),
           ),
         );
@@ -102,6 +111,49 @@ export function bootstrapApp(): () => void {
   document.getElementById('btn-refresh-status')?.addEventListener('click', () => {
     void renderSidebarAccounts();
     showToast('Storage pool status refreshed.');
+  });
+
+  // Connect Google Drive / Mega / YouTube Account Dialog
+  const connDialog = document.getElementById('connect-account-dialog') as HTMLDialogElement | null;
+  const connForm = document.getElementById('connect-account-form') as HTMLFormElement | null;
+  const provSel = document.getElementById('acc-provider') as HTMLSelectElement | null;
+  const megaBox = document.getElementById('acc-mega-fields');
+  const gdriveBox = document.getElementById('acc-gdrive-fields');
+  const syncProviderFields = () => {
+    const v = provSel?.value ?? 'gdrive';
+    if (megaBox) megaBox.hidden = v !== 'mega';
+    if (gdriveBox) gdriveBox.hidden = v !== 'gdrive';
+  };
+  provSel?.addEventListener('change', syncProviderFields);
+  document.getElementById('btn-connect-account')?.addEventListener('click', () => {
+    if (!connDialog) return;
+    syncProviderFields();
+    openModalDialog(connDialog);
+  });
+  document.getElementById('btn-conn-cancel')?.addEventListener('click', () => connDialog?.close());
+  connForm?.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    try {
+      await apiRequest('/api/v1/accounts', {
+        method: 'POST',
+        body: JSON.stringify({
+          provider: provSel?.value ?? 'gdrive',
+          id: (document.getElementById('acc-id') as HTMLInputElement).value.trim(),
+          name: (document.getElementById('acc-name') as HTMLInputElement).value.trim(),
+          rcloneRemote: (document.getElementById('acc-remote') as HTMLInputElement).value.trim(),
+          email: (document.getElementById('acc-email') as HTMLInputElement).value.trim(),
+          password: (document.getElementById('acc-pass') as HTMLInputElement).value,
+          oauthTokenJson: (document.getElementById('acc-oauth') as HTMLTextAreaElement).value.trim(),
+          totalGb: Number((document.getElementById('acc-gb') as HTMLInputElement).value) || 0,
+        }),
+      });
+      connForm.reset();
+      connDialog?.close();
+      showToast('Storage account connected.');
+      await renderSidebarAccounts();
+    } catch (err) {
+      showToast(`Connect failed: ${(err as Error).message}`);
+    }
   });
 
   const switchView = (id: ViewId) => {
@@ -242,6 +294,7 @@ export function bootstrapApp(): () => void {
       const qEl = document.getElementById('queue-stat');
       if (tEl) tEl.textContent = `${mbps} MB/s`;
       if (qEl) qEl.textContent = `${snap.activeJobs.length} active jobs`;
+      window.dispatchEvent(new CustomEvent('cm-telemetry', { detail: snap }));
     },
     (online) => {
       const pill = document.getElementById('daemon-pill');
